@@ -1,0 +1,2012 @@
+<!DOCTYPE html>
+<html lang="id">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<title>Arknights Survivors</title>
+		<style>
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+body {
+	color: white;
+	background-color: black;
+	overflow: hidden;
+	touch-action: none;
+}
+
+#canvas {
+	display: block;
+}
+
+#canvas:focus {
+	outline: none;
+}
+
+#status, #status-splash, #status-progress {
+	position: absolute;
+	left: 0;
+	right: 0;
+}
+
+#status, #status-splash {
+	top: 0;
+	bottom: 0;
+}
+
+#status {
+	background-color: #070c11;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	visibility: hidden;
+}
+
+#status-splash {
+	max-height: 100%;
+	max-width: 100%;
+	margin: auto;
+}
+
+#status-splash.show-image--false {
+	display: none;
+}
+
+#status-splash.fullsize--true {
+	height: 100%;
+	width: 100%;
+	object-fit: contain;
+}
+
+#status-splash.use-filter--false {
+	image-rendering: pixelated;
+}
+
+#status-progress, #status-notice {
+	display: none;
+}
+
+#status-progress {
+	bottom: 10%;
+	width: 50%;
+	margin: 0 auto;
+}
+
+#status-notice {
+	background-color: #5b3943;
+	border-radius: 0.5rem;
+	border: 1px solid #9b3943;
+	color: #e0e0e0;
+	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
+	line-height: 1.3;
+	margin: 0 2rem;
+	overflow: hidden;
+	padding: 1rem;
+	text-align: center;
+	z-index: 1;
+}
+		</style>
+		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
+<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+<style>
+/* 网页启动加载页「声呐测绘」（用户 10-25 定：对照图方向 C 第一张；视觉按 docs/37，接指挥圆盘 / 小地图的声呐样式）。
+   声呐圈 = 进度环 + 扫描扇面；左下终端日志逐行 [OK]；右下提示；左上标志（loader_logo.png = art/ui/title_deep/logo_mark.png）。
+   扫描扇面用 transform 动画（合成线程跑，引擎启动占住主线程时也在转）；系统「减少动态效果」时不转。 */
+#sy-load {
+  position: fixed; inset: 0; z-index: 9000; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 50%, #0d1820 0%, #070c11 70%, #04070a 100%);
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif; color: #e6eef2;
+  transition: opacity .4s;
+}
+#sy-load.sy-out { opacity: 0; pointer-events: none; }
+/* 读完后的「开始游戏」（11-01，同桌面 boot_views.draw_start）：放在声呐圈（方向 0）/ 盘（方向 3）下面（top 由 loader.js 按圈的外框算），
+   方向 3 的 RHODES ISLAND 让位；整页任意处点 / 按任意键都算。动效（11-01 用户「加载页开始游戏的动效也做一下」）：
+   出现 —— 引线从「接入完成」接触点落下（.sy-lead，loader.js 画）→ 四角饰角收拢锁定、外框闪一圈 → 竖扫描线左到右揭开底色 → 边框从上沿正中向两边描出
+          → 四个字乱码逐个解出（loader.js）→ 英文打字机；
+   待机 —— 框线呼吸 + 一段青光沿边框慢转（5.5 秒一圈）+ 左右两枚小方框反向慢转；
+   悬停 / 键盘聚焦 —— 边框收紧 3 像素、饰角外扩、外圈青色微光；
+   按下（.on）—— 反白 + 整屏一下压暗（.sy-dim）+ 三圈声呐脉冲扩到整屏（.sy-pulse），引擎 0.28 秒后揭开标题页、本页淡出。减少动态效果：只淡入，不乱码、不转、不发脉冲 */
+#sy-load .sy-go {
+  position: absolute; left: 50%; top: 70%; width: 232px; height: 50px; margin-left: -116px; z-index: 20;
+  background: none; border: 0; color: #edf2f5; cursor: pointer; outline: none;
+  font: inherit; font-size: 20px; letter-spacing: 2px; padding: 0;
+}
+#sy-load .sy-go > * { pointer-events: none; }
+#sy-load .sy-go .fl, #sy-load .sy-go .gw { position: absolute; inset: 0; transition: inset .12s ease-out, opacity .12s; }
+#sy-load .sy-go .fl { background: rgba(5, 13, 18, .86); animation: sy-scan-fill .3s linear .3s backwards; }
+#sy-load .sy-go .sc { position: absolute; top: -7px; bottom: -7px; left: 0; width: 1.5px; background: #5ee6e6; box-shadow: -8px 0 14px rgba(94, 230, 230, .35); opacity: 0;
+  animation: sy-scan .3s linear .3s; }
+#sy-load .sy-go .gw { opacity: 0; box-shadow: 0 0 0 2px rgba(94, 230, 230, .16), 0 0 14px rgba(94, 230, 230, .28); background: rgba(94, 230, 230, .1); }
+#sy-load .sy-go .fr { position: absolute; left: 0; top: 0; overflow: visible; transition: transform .12s ease-out; }   /* 尺寸 / 路径由 loader.js 按按钮像素写 */
+#sy-load .sy-go .fr path { fill: none; }
+#sy-load .sy-go .fr .tr { stroke: rgba(223, 233, 238, .85); stroke-width: 1.5; stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: sy-trace .45s cubic-bezier(.2, .7, .3, 1) .35s forwards, sy-fade .1s linear .8s forwards; }
+#sy-load .sy-go .fr .bd { stroke: #5ee6e6; stroke-width: 1.5; opacity: 0; animation: sy-in .1s linear .8s forwards, sy-br 2.4s ease-in-out .9s infinite; }
+#sy-load .sy-go .fr .fw { stroke: #5ee6e6; stroke-width: 2; stroke-dasharray: 8 92; opacity: 0; animation: sy-in .3s linear 1.1s forwards, sy-flow 5.5s linear 1.1s infinite; }
+#sy-load .sy-go::after { content: ""; position: absolute; inset: -2px; border: 1px solid #5ee6e6; opacity: 0; animation: sy-lock .25s ease-out .45s; }
+#sy-load .sy-go i { position: absolute; width: 6px; height: 6px; background: #5ee6e6; --x: 0px; --y: 0px; transform: translate(var(--x), var(--y)) rotate(45deg);
+  transition: transform .12s ease-out, width .12s, height .12s; animation: sy-corner .35s cubic-bezier(.2, .7, .3, 1) .1s backwards; }
+#sy-load .sy-go i.c0 { left: -4px; top: -4px; --dx: -1; --dy: -1; } #sy-load .sy-go i.c1 { right: -4px; top: -4px; --dx: 1; --dy: -1; }
+#sy-load .sy-go i.c2 { right: -4px; bottom: -4px; --dx: 1; --dy: 1; } #sy-load .sy-go i.c3 { left: -4px; bottom: -4px; --dx: -1; --dy: 1; }
+#sy-load .sy-go b.r0, #sy-load .sy-go b.r1 { position: absolute; top: 50%; width: 7px; height: 7px; margin-top: -4.5px; border: 1.2px solid rgba(94, 230, 230, .8); opacity: 0;
+  animation: sy-in .25s linear .75s forwards, sy-spin 7s linear .75s infinite; }
+#sy-load .sy-go b.r0 { left: 16px; } #sy-load .sy-go b.r1 { right: 16px; animation-direction: normal, reverse; }
+#sy-load .sy-go span { position: relative; }
+#sy-load .sy-go span s { text-decoration: none; display: inline-block; }
+#sy-load .sy-go span s.x { color: #5ee6e6; font-family: Consolas, Menlo, monospace; font-size: .8em; min-width: 1.25em; }
+#sy-load .sy-go em { position: absolute; left: -40px; right: -40px; top: calc(100% + 12px); font-style: normal; font-size: 10px; letter-spacing: 4px; color: #708794;
+  clip-path: inset(0 100% 0 0); animation: sy-type .35s steps(13) .9s forwards; }
+/* 悬停 / 键盘聚焦 / 手柄（loader 不收手柄，只有键盘）*/
+#sy-load .sy-go:hover .fl, #sy-load .sy-go:focus-visible .fl, #sy-load .sy-go.on .fl { inset: 3px; }
+#sy-load .sy-go:hover .fr, #sy-load .sy-go:focus-visible .fr, #sy-load .sy-go.on .fr { transform: scale(var(--sx), var(--sy)); }
+#sy-load .sy-go:hover .gw, #sy-load .sy-go:focus-visible .gw { opacity: 1; inset: 3px; }
+#sy-load .sy-go:hover .fr .bd, #sy-load .sy-go:focus-visible .fr .bd { animation-play-state: running, paused; stroke-opacity: 1; }
+#sy-load .sy-go:hover i, #sy-load .sy-go:focus-visible i { --x: calc(var(--dx) * 2px); --y: calc(var(--dy) * 2px); width: 8px; height: 8px; }
+/* 按下：反白 + 压暗 + 声呐脉冲 */
+#sy-load .sy-go.on .fl { animation: sy-inv .26s linear both; }
+#sy-load .sy-go.on span { animation: sy-inv-t .26s linear both; }
+#sy-load .sy-go.on .fw, #sy-load .sy-go.on em { opacity: 0; transition: opacity .1s; }
+#sy-load .sy-dim { position: absolute; inset: 0; z-index: 19; background: #000306; pointer-events: none; animation: sy-dim .5s ease-out forwards; }
+#sy-load .sy-pulse { position: absolute; z-index: 19; border-radius: 50%; border: 2px solid #5ee6e6; pointer-events: none; opacity: 0;
+  animation: sy-pulse .85s cubic-bezier(.2, .7, .3, 1) both; }
+#sy-load .sy-pulse.p0 { box-shadow: inset 0 0 0 8px rgba(94, 230, 230, .08); }
+#sy-load .sy-pulse.p1, #sy-load .sy-pulse.p2 { border-width: 1px; }
+#sy-load .sy-lead { position: absolute; inset: 0; z-index: 19; pointer-events: none; overflow: visible; animation: sy-fade .6s linear .75s forwards; }
+#sy-load .sy-lead line { stroke: #5ee6e6; stroke-opacity: .6; stroke-width: 1; stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: sy-trace .25s cubic-bezier(.2, .7, .3, 1) forwards; }
+#sy-load .sy-lead rect { fill: none; stroke: #5ee6e6; stroke-opacity: .85; transform-box: fill-box; transform-origin: center; animation: sy-lockon .2s cubic-bezier(.2, .7, .3, 1) both; }
+#sy-load.sy-ready .sv-ri { display: none; }
+@keyframes sy-scan-fill { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes sy-scan { from { left: 0; opacity: 1; } 99% { left: 100%; opacity: 1; } to { left: 100%; opacity: 0; } }
+@keyframes sy-trace { to { stroke-dashoffset: 0; } }
+@keyframes sy-fade { to { opacity: 0; } }
+@keyframes sy-in { to { opacity: 1; } }
+@keyframes sy-go-in { from { opacity: 0; } }
+@keyframes sy-br { 50% { stroke-opacity: .5; } }
+@keyframes sy-flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -100; } }
+@keyframes sy-lock { from { opacity: .4; transform: scale(1); } to { opacity: 0; transform: scale(1.06, 1.25); } }
+@keyframes sy-corner { from { opacity: 0; transform: translate(calc(var(--dx) * 16px), calc(var(--dy) * 16px)) rotate(45deg); } }
+@keyframes sy-spin { from { transform: rotate(45deg); } to { transform: rotate(405deg); } }
+@keyframes sy-type { to { clip-path: inset(0 0 0 0); } }
+@keyframes sy-inv { 0%, 30% { background: #dfe9ee; } 100% { background: rgba(5, 13, 18, .86); } }
+@keyframes sy-inv-t { 0%, 30% { color: #060b10; } 100% { color: #edf2f5; } }
+@keyframes sy-dim { from { opacity: .42; } to { opacity: 0; } }
+@keyframes sy-pulse { from { opacity: .6; transform: scale(var(--s0)); } to { opacity: 0; transform: scale(1); } }
+@keyframes sy-lockon { from { transform: scale(2.6); opacity: 0; } }
+@media (max-height: 520px) {
+  #sy-load .sy-go { width: 200px; height: 42px; margin-left: -100px; font-size: 18px; }
+  #sy-load .sy-go em { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #sy-load .sy-go, #sy-load .sy-go * , #sy-load .sy-go::after { animation: none !important; }
+  #sy-load .sy-go { animation: sy-go-in .25s linear both !important; }
+  #sy-load .sy-go .fr .tr, #sy-load .sy-go .fr .fw, #sy-load .sy-go .sc { display: none; }
+  #sy-load .sy-go .fr .bd, #sy-load .sy-go b.r0, #sy-load .sy-go b.r1 { opacity: 1; }
+  #sy-load .sy-go b.r0, #sy-load .sy-go b.r1 { transform: rotate(45deg); }
+  #sy-load .sy-go em { clip-path: none; }
+  #sy-load .sy-go.on .fl { animation: sy-inv .26s linear both !important; }
+  #sy-load .sy-go.on span { animation: sy-inv-t .26s linear both !important; }
+  #sy-load .sy-lead { display: none; }
+}
+#sy-load .sy-grid {
+  position: absolute; inset: 0;
+  background-image: linear-gradient(rgba(120, 170, 190, .05) 1px, transparent 1px), linear-gradient(90deg, rgba(120, 170, 190, .05) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+#sy-load .sy-logo { position: absolute; left: 40px; top: 36px; width: min(300px, 38vw); image-rendering: pixelated; }
+#sy-load .sy-fan { position: absolute; right: 40px; top: 44px; font-size: 11px; letter-spacing: 4px; color: #7f98a2; }
+#sy-load .sy-en { font-size: 11px; letter-spacing: 3px; }
+/* 声呐圈：边长随视口，居中略偏上 */
+#sy-load .sy-sonar {
+  position: absolute; left: 50%; top: 45%; width: min(400px, 52vh, 60vw); aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+}
+#sy-load .sy-sonar svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+#sy-load .sy-sweep { transform-origin: 0 0; animation: sy-spin 3.2s linear infinite; }
+@keyframes sy-spin { to { transform: rotate(360deg); } }
+#sy-load .sy-ring { transition: stroke-dashoffset .3s linear; }
+#sy-load .sy-blip { animation: sy-blip 3.2s linear infinite; opacity: 0; }
+@keyframes sy-blip { 0% { opacity: 0; } 4% { opacity: 1; } 60% { opacity: .15; } 100% { opacity: 0; } }
+#sy-load .sy-center { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; }
+#sy-load .sy-num { font-size: min(64px, 9vh); line-height: 1; font-variant-numeric: tabular-nums; font-weight: 700; }
+#sy-load .sy-num span { font-size: .38em; color: #5ee6e6; margin-left: 2px; }
+#sy-load .sy-num.sy-busy { font-size: min(26px, 5vh); letter-spacing: 4px; }
+#sy-load .sy-sub { margin-top: 10px; color: #5ee6e6; }
+/* 面板（日志 / 提示） */
+#sy-load .sy-panel { position: absolute; bottom: 50px; width: min(330px, 30vw); background: rgba(14, 22, 28, .82); border: 1px solid #263540; }
+#sy-load .sy-panel .hd { height: 26px; line-height: 26px; padding-left: 12px; color: #8fa6b0; border-bottom: 1px solid #263540; }
+#sy-load .sy-panel .bd { padding: 10px 12px 12px; font-size: 13px; line-height: 22px; color: #b6c6cc; min-height: 92px; }
+#sy-load .sy-log { left: 40px; }
+#sy-load .sy-log .bd div { color: #44545c; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#sy-load .sy-log .bd div.now { color: #f2f6f8; }
+#sy-load .sy-log .bd div.ok { color: #9fb2ba; }
+#sy-load .sy-log .bd b { font-weight: 400; display: inline-block; width: 44px; }
+#sy-load .sy-log .bd div.ok b { color: #5ee6e6; }
+#sy-load .sy-tips { right: 40px; }
+#sy-load .sy-tips .bd { transition: opacity .22s; }
+#sy-load .sy-foot { position: absolute; left: 0; right: 0; bottom: 16px; text-align: center; font-size: 11px; color: #6f8590; }
+/* 矮屏（手机横屏）：面板收窄、标志变小 */
+@media (max-height: 520px) {
+  #sy-load .sy-logo { left: 20px; top: 16px; width: min(200px, 30vw); }
+  #sy-load .sy-fan { right: 20px; top: 20px; }
+  #sy-load .sy-panel { bottom: 30px; width: min(260px, 27vw); }
+  #sy-load .sy-log { left: 20px; } #sy-load .sy-tips { right: 20px; }
+  #sy-load .sy-panel .bd { font-size: 11px; line-height: 18px; min-height: 0; padding: 6px 10px 8px; }
+  #sy-load .sy-foot { bottom: 8px; }
+}
+@media (max-width: 700px) { #sy-load .sy-fan { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  #sy-load .sy-sweep, #sy-load .sy-blip { animation: none; }
+  #sy-load .sy-blip { opacity: .6; }
+  #sy-load .sy-tips .bd { transition: none; }
+}
+
+/* ---------------- 启动页新方向（ui/boot_v 1–3，10-30；画法同 game/scripts/screens/boot_views.gd，写法见 loader.js 的 buildV）---------------- */
+#sy-load.sv { background: #05090d; font-family: Consolas, "SFMono-Regular", Menlo, "Microsoft YaHei", "PingFang SC", monospace; }
+#sy-load.sv .sy-en { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+#sy-load .sv-head { position: absolute; left: 36px; right: 36px; top: 30px; height: 26px; border-bottom: 1px solid #29383f; display: flex; gap: 18px; align-items: baseline; font-size: 13px; }
+#sy-load .sv-head b { color: #5ee6e6; font-size: 16px; letter-spacing: 4px; font-weight: 400; }
+#sy-load .sv-head em { margin-left: auto; font-style: normal; font-size: 12px; color: #78909a; }
+#sy-load .sv-cap { font-size: 10px; letter-spacing: 3px; color: #78909a; margin-bottom: 8px; }
+#sy-load .sv-frame { position: relative; }
+#sy-load .sv-frame::before, #sy-load .sv-frame::after { content: ""; position: absolute; width: 12px; height: 12px; border: 1.5px solid rgba(94, 230, 230, .55); }
+#sy-load .sv-frame::before { left: -8px; top: 12px; border-right: 0; border-bottom: 0; }
+#sy-load .sv-frame::after { right: -8px; bottom: -8px; border-left: 0; border-top: 0; }
+#sy-load .sv-log, #sy-load .sv-tip { min-width: 0; }
+#sy-load .sv-lines div { display: flex; gap: 8px; white-space: nowrap; overflow: hidden; font-size: 14px; line-height: 22px; color: #eef3f5; }
+#sy-load .sv-lines div.ok { color: #78909a; }
+#sy-load .sv-lines div.wait { color: #b8c6cc; }
+#sy-load .sv-lines b { font-weight: 400; color: #38464d; }
+#sy-load .sv-lines div:last-child b { color: #78909a; }
+#sy-load .sv-lines span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#sy-load .sv-lines u { flex: 1 1 0; min-width: 0; text-decoration: none; overflow: hidden; color: #2c393f; }
+#sy-load .sv-lines u::before { content: "................................................................................................"; }
+#sy-load .sv-lines em { font-style: normal; color: #5ee6e6; width: 2ch; text-align: right; }
+#sy-load .sv-cur { font-style: normal; color: #eef3f5; animation: sv-blink 1s steps(1) infinite; }
+@keyframes sv-blink { 55% { opacity: 0; } }
+#sy-load .sv-tip .bd { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; font-size: 13px; line-height: 21px; color: #b2c4ca; transition: opacity .22s; }
+/* 海雪：两层首尾相接往上走 */
+#sy-load .sv-snow { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+#sy-load .sv-snow i { position: absolute; left: 0; top: 0; width: 1px; height: 1px; animation: sv-rise 40s linear infinite; }
+#sy-load .sv-snow i + i { top: 100vh; }
+@keyframes sv-rise { to { transform: translateY(-100vh); } }
+#sy-load .sv-scan { position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255, 255, 255, .018) 0 1px, transparent 1px 3px); }
+/* 1 终端开机 */
+#sy-load .sv-body1 { position: absolute; left: 36px; right: 36px; top: 92px; bottom: 112px; display: grid; grid-template-columns: 62fr 38fr; gap: 40px; }
+#sy-load .sv-prog { position: absolute; left: 36px; right: 36px; bottom: 40px; display: grid; grid-template-columns: 1fr auto; column-gap: 24px; align-items: end; }
+#sy-load .sv-segs { display: flex; gap: 2px; height: 8px; }
+#sy-load .sv-segs i { flex: 1; background: #172128; }
+#sy-load .sv-segs i.on { background: #5ee6e6; }
+#sy-load .sv-segs i.half { background: rgba(94, 230, 230, .5); }
+#sy-load .sv-pct { font-size: 34px; line-height: 1; color: #eef3f5; }
+#sy-load .sv-what { grid-column: 1 / 3; margin-top: 8px; font-size: 11px; color: #78909a; }
+/* 2 深潜 */
+#sy-load .sv-deep { position: absolute; inset: 0; background: linear-gradient(#04080c, #010305); opacity: 0; transition: opacity .3s; }
+#sy-load.sv2 { background: linear-gradient(#0d2933, #05101a); }
+#sy-load .sv-body2 { position: absolute; left: 36px; width: calc(62% - 72px); top: 92px; bottom: 50px; display: grid; grid-template-rows: 1fr auto; gap: 20px; }
+#sy-load .sv-gauge { position: absolute; right: 36px; top: 70px; bottom: 50px; width: 300px; }
+#sy-load .sv-rule { position: absolute; right: 90px; top: 0; bottom: 0; width: 70px; overflow: hidden; border-left: 1px solid rgba(94, 230, 230, .35); }
+#sy-load .sv-ruler { position: absolute; left: 0; right: 0; top: 50%; height: 1800px; transition: transform .3s linear; }
+#sy-load .sv-ruler i { position: absolute; left: 0; width: 7px; height: 1px; background: rgba(94, 230, 230, .25); }
+#sy-load .sv-ruler i.mj { width: 16px; background: rgba(94, 230, 230, .6); }
+#sy-load .sv-ruler b { position: absolute; left: 22px; top: -7px; font-weight: 400; font-size: 11px; color: #78909a; white-space: nowrap; }
+#sy-load .sv-read { position: absolute; right: 186px; top: 50%; transform: translateY(-50%); text-align: right; }
+#sy-load .sv-read::after { content: ""; position: absolute; right: -16px; top: 50%; border: 6px solid transparent; border-left: 10px solid #5ee6e6; transform: translateY(-50%); }
+#sy-load .sv-depth { font-size: 40px; line-height: 1; color: #eef3f5; }
+#sy-load .sv-depth small { font-size: 16px; color: #5ee6e6; margin-left: 4px; }
+#sy-load .sv-sync { margin-top: 10px; font-size: 12px; color: #5ee6e6; }
+#sy-load .sv2 .sv-jwrap, #sy-load.sv2 .sv-jwrap { position: absolute; left: 58%; top: 52%; width: 110px; opacity: 0; transition: opacity .3s, transform .3s; }
+/* 3 声呐终端（10-31 第三版：PRTS 终端版式，深海底浅色线） */
+#sy-load.sv3 { background: #060b10; color: #dfe9ee; }
+#sy-load.sv3 .sy-foot { color: #6f858f; }
+#sy-load .sv-net { position: absolute; inset: 0; width: 100%; height: 100%; }
+#sy-load .sv-net line { stroke: rgba(48, 70, 82, .95); stroke-width: 1; vector-effect: non-scaling-stroke; opacity: 0; transition: opacity .6s linear; }
+#sy-load .sv-net line.on { opacity: 1; }
+#sy-load .sv-net .nd { fill: #56707c; animation: sv-drift 6s ease-in-out infinite alternate; transform-box: fill-box; }
+@keyframes sv-drift { to { transform: translate(.6px, .9px); } }
+#sy-load .sv-geo1, #sy-load .sv-geo2, #sy-load .sv-orbit { transform-origin: 0 0; }
+#sy-load .sv-geo1 { animation: sy-spin 18s linear infinite; }
+#sy-load .sv-geo2 { animation: sy-spin 28s linear infinite reverse; }
+#sy-load .sv-orbit { animation: sy-spin 10.5s linear infinite; }
+#sy-load .sv-orbit path { fill: #dfe9ee; }
+#sy-load .sv-brand { position: absolute; left: 40px; top: 30px; line-height: 1.15; }
+#sy-load .sv-brand b { display: block; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; font-size: 30px; font-weight: 800; letter-spacing: 1px; }
+#sy-load .sv-brand em { display: block; font-style: normal; font-size: 9px; letter-spacing: 2px; }
+#sy-load .sv-brand span { display: block; margin-top: 6px; font-size: 11px; color: #6f858f; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+#sy-load.sv3 .sv-dial { position: absolute; left: 50%; top: 50%; width: min(440px, 60vh, 44vw); aspect-ratio: 1; transform: translate(-50%, -50%); }
+#sy-load.sv3 .sv-dial svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+#sy-load.sv3 .sv-ticks line { stroke: rgba(194, 199, 204, .9); }
+#sy-load.sv3 .sv-ticks line.on { stroke: #dfe9ee; }
+#sy-load.sv3 .sv-ticks line.cur { stroke: #5ee6e6; animation: sv-blink .5s steps(1) infinite; }
+#sy-load.sv3 .sv-az text { fill: #6f858f; font-size: 10px; text-anchor: middle; font-family: Consolas, Menlo, monospace; }
+#sy-load .sv-contacts rect { fill: #dfe9ee; }
+#sy-load .sv-contacts .go rect { fill: #5ee6e6; }
+#sy-load .sv-contacts .go rect.bx { fill: none; stroke: #5ee6e6; stroke-width: 1.5; animation: sv-blink .8s steps(1) infinite; }
+#sy-load .sv-contacts text { fill: #6f858f; font-size: 9px; font-family: Consolas, Menlo, monospace; }
+#sy-load .sv-contacts .pg { fill: none; stroke: #dfe9ee; stroke-width: 1; opacity: 0; transform-box: fill-box; transform-origin: center; animation: sv-ping 3.2s linear infinite; }
+#sy-load .sv-contacts .go .pg { stroke: #5ee6e6; }
+@keyframes sv-ping { 0% { opacity: .7; transform: scale(1); } 30% { opacity: 0; transform: scale(2.6); } 100% { opacity: 0; } }
+/* 扇面扫过就亮（10-31 用户「声呐上面不应该随着转的时候闪烁吗」）：扫到一刻最亮 + 光晕，之后大半圈渐暗到 .25 */
+#sy-load .sv-contacts .lt { animation: sv-lit 3.2s linear infinite; }
+@keyframes sv-lit { 0% { opacity: 1; } 70% { opacity: .25; } 100% { opacity: .25; } }
+#sy-load .sv-contacts .gl { fill: #dfe9ee; opacity: 0; animation: sv-glow 3.2s linear infinite; }
+#sy-load .sv-contacts .go .gl { fill: #5ee6e6; }
+@keyframes sv-glow { 0% { opacity: .22; } 25% { opacity: 0; } 100% { opacity: 0; } }
+#sy-load.sv3 .sv-center { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; }
+#sy-load.sv3 .sv-num { font-size: min(26px, 4vh); color: #dfe9ee; margin-top: -2px; }
+#sy-load .sv-ri { position: absolute; left: 0; right: 0; top: calc(100% + 40px); text-align: center; font-size: 10px; letter-spacing: 9px; color: #dfe9ee; }
+#sy-load.sv3 .sv-cap { color: #dfe9ee; border-bottom: 1.5px solid #dfe9ee; padding-bottom: 6px; margin-bottom: 10px; }
+#sy-load.sv3 .sv-left, #sy-load.sv3 .sv-tele { position: absolute; width: min(330px, calc(50% - min(220px, 30vh, 22vw) - 90px)); }
+#sy-load.sv3 .sv-left { left: 40px; bottom: 56px; }
+#sy-load.sv3 .sv-tele { right: 40px; top: calc(50% - 60px); font-size: 13px; line-height: 25px; }
+#sy-load.sv3 .sv-lines div { color: #dfe9ee; font-size: 13px; line-height: 20px; }
+#sy-load.sv3 .sv-lines div.ok { color: #dfe9ee; }
+#sy-load.sv3 .sv-lines div.wait { color: #6f858f; }
+#sy-load.sv3 .sv-lines b { color: #6f858f; }
+#sy-load.sv3 .sv-lines u { color: #24323a; }
+#sy-load.sv3 .sv-lines em { color: #dfe9ee; }
+#sy-load.sv3 .sv-lines div.now em { color: #5ee6e6; }
+#sy-load.sv3 .sv-cur { color: #5ee6e6; }
+#sy-load.sv3 .sv-rows b { font-weight: 400; color: #6f858f; display: inline-block; width: 3.4em; }
+#sy-load.sv3 .sv-tip .sv-cap { border: 0; color: #6f858f; margin: 12px 0 4px; }
+#sy-load.sv3 .sv-tip .bd { color: #a9bac0; }
+#sy-load .sv-build { position: absolute; right: 40px; bottom: 34px; font-size: 11px; color: #6f858f; }
+#sy-load .sv-dark { position: absolute; inset: 0; background: #02050a; opacity: 0; pointer-events: none; transition: opacity .3s; }
+#sy-load .sv-lines div.nw span { animation: sv-type .35s steps(10) both; display: inline-block; overflow: hidden; }
+@keyframes sv-type { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+#sy-load .sv-jelly { width: 100%; height: auto; display: block; animation: sv-bob 3s ease-in-out infinite; }
+@keyframes sv-bob { 50% { transform: translateY(-6px) scaleX(1.04); } }
+/* 矮屏（手机横屏） */
+@media (max-height: 520px) {
+  #sy-load .sv-head { left: 18px; right: 18px; top: 14px; }
+  #sy-load .sv-body1 { left: 18px; right: 18px; top: 66px; bottom: 76px; gap: 24px; }
+  #sy-load .sv-body2 { left: 18px; top: 66px; bottom: 30px; width: calc(62% - 36px); }
+  #sy-load .sv-gauge { right: 18px; top: 50px; bottom: 30px; }
+  #sy-load .sv-prog { left: 18px; right: 18px; bottom: 26px; }
+  #sy-load .sv-pct { font-size: 24px; }
+  #sy-load .sv-lines div { font-size: 12px; line-height: 18px; }
+  #sy-load .sv-depth { font-size: 28px; }
+  #sy-load .sv-tip .bd { font-size: 12px; line-height: 18px; }
+  #sy-load .sv-left, #sy-load .sv-tele { top: calc(49% - 70px); }
+  #sy-load .sv-left { left: 34px; } #sy-load .sv-tele { right: 34px; }
+  #sy-load .sv-brand { left: 20px; top: 14px; } #sy-load .sv-brand b { font-size: 22px; }
+  #sy-load.sv3 .sv-left { left: 20px; bottom: 26px; } #sy-load.sv3 .sv-tele { right: 20px; }
+  #sy-load .sv-ri { top: calc(100% + 28px); } #sy-load .sv-build { right: 20px; bottom: 22px; }
+  #sy-load .sv-corners i:nth-child(1), #sy-load .sv-corners i:nth-child(3) { left: 14px; }
+  #sy-load .sv-corners i:nth-child(2), #sy-load .sv-corners i:nth-child(4) { right: 14px; }
+  #sy-load .sv-corners i:nth-child(1), #sy-load .sv-corners i:nth-child(2) { top: 14px; }
+  #sy-load .sv-corners i:nth-child(3), #sy-load .sv-corners i:nth-child(4) { bottom: 14px; }
+}
+/* 方向 3 很矮的手机横屏（≤ 420，如 740×360）：右侧提示三行时会压到右下角 BUILD 行，行距收紧并把 BUILD 让掉 */
+@media (max-height: 420px) {
+  #sy-load.sv3 .sv-tele { line-height: 21px; }
+  #sy-load.sv3 .sv-build { display: none; }
+}
+/* 竖屏：上下排 */
+@media (orientation: portrait) {
+  #sy-load .sv-head { left: 18px; right: 18px; }
+  #sy-load .sv-head em { display: none; }
+  #sy-load .sv-body1 { left: 18px; right: 18px; top: 76px; bottom: 120px; grid-template-columns: 1fr; grid-template-rows: 1fr auto; gap: 20px; }
+  #sy-load .sv-prog { left: 18px; right: 18px; }
+  #sy-load .sv-body2 { left: 18px; right: 18px; width: auto; top: 76px; bottom: 210px; }
+  #sy-load .sv-gauge { left: 18px; right: 18px; width: auto; top: auto; bottom: 50px; height: 140px; }
+  #sy-load .sv-rule { display: none; }
+  #sy-load .sv-read { left: 0; right: auto; text-align: left; }
+  #sy-load .sv-read::after { display: none; }
+  #sy-load.sv2 .sv-jwrap { left: 60%; top: 70%; width: 90px; }
+  #sy-load .sv-dial { top: 32%; width: min(80vw, 42vh); }
+  #sy-load.sv3 .sv-dial { top: 34%; width: min(78vw, 40vh); }
+  #sy-load.sv3 .sv-left { left: 24px; right: 24px; width: auto; bottom: auto; top: calc(34% + min(39vw, 20vh) + 70px); }
+  #sy-load.sv3 .sv-tele, #sy-load .sv-build { display: none; }
+  #sy-load .sv-left { left: 34px; right: 34px; width: auto; top: calc(32% + min(40vw, 21vh) + 40px); }
+  #sy-load .sv-tele { left: 34px; right: 34px; width: auto; top: auto; bottom: 46px; }
+  #sy-load .sv-tele > .sv-cap, #sy-load .sv-rows { display: none; }
+  #sy-load .sv-lines div { font-size: 12px; line-height: 19px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #sy-load .sv-snow i, #sy-load .sv-cur, #sy-load .sv-jelly, #sy-load .sv-ticks line.cur, #sy-load .sv-lines div.nw span,
+  #sy-load .sv-contacts .pg, #sy-load .sv-contacts .go rect.bx, #sy-load .sv-contacts .lt, #sy-load .sv-contacts .gl,
+  #sy-load .sv-net .nd, #sy-load .sv-geo1, #sy-load .sv-geo2, #sy-load .sv-orbit { animation: none; }
+}
+
+/* ---------------- 方向 4：PRTS 认证终端（11-05，loader.js p4Init；同桌面 boot_views.draw_v4）----------------
+   一直在动的都在 .p4fx 里，只动 opacity / transform（合成线程），引擎占住主线程时照样流畅；呼吸 2.6 秒一次（同桌面） */
+#sy-load.sv4 { background: #0f1013; }
+#sy-load.sv4 .p4c { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+#sy-load.sv4 .p4fx { position: absolute; width: 0; height: 0; opacity: 0; transition: opacity .4s ease-out; pointer-events: none; }
+#sy-load.sv4 .p4fx.on { opacity: 1; }
+#sy-load.sv4 .p4fx > * { position: absolute; display: block; }
+#sy-load.sv4 .p4logo { image-rendering: pixelated; animation: p4br 2.6s ease-in-out infinite; }
+#sy-load.sv4 .p4glow { border-radius: 50%; background: radial-gradient(closest-side, rgba(54, 226, 220, .1), rgba(54, 226, 220, .04) 60%, transparent); animation: p4gl 2.6s ease-in-out infinite; }
+#sy-load.sv4 .p4tri polygon { fill: none; stroke: #eceef0; stroke-width: 1; vector-effect: non-scaling-stroke; }
+#sy-load.sv4 .p4tri { opacity: .08; animation: p4tr 2.6s ease-in-out infinite; }
+#sy-load.sv4 .p4rot svg { width: 100%; height: 100%; display: block; overflow: visible; }
+#sy-load.sv4 .p4rot circle { fill: none; transform: rotate(-90deg); }
+#sy-load.sv4 .p4rot.a { animation: p4spin 39.3s linear infinite; }
+#sy-load.sv4 .p4rot.a circle { stroke: rgba(236, 238, 240, .5); }
+#sy-load.sv4 .p4rot.b { animation: p4spin 22.4s linear infinite reverse; }
+#sy-load.sv4 .p4rot.b circle { stroke: rgba(54, 226, 220, .55); }
+#sy-load.sv4 .p4run { height: 1px; overflow: hidden; }
+#sy-load.sv4 .p4run.l { transform: scaleX(-1); }
+#sy-load.sv4 .p4run b { position: absolute; left: 0; top: 0; width: var(--w); height: 1px; background: rgba(54, 226, 220, .8); opacity: 0; animation: p4run 2.6s infinite; }
+#sy-load.sv4 .p4halo { border-radius: 50%; background: radial-gradient(closest-side, rgba(54, 226, 220, .07), rgba(54, 226, 220, .025) 55%, transparent); animation: p4ha 2.6s ease-in-out infinite; }
+@keyframes p4br { 0%, 100% { opacity: 1; } 50% { opacity: .72; } }
+@keyframes p4gl { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
+@keyframes p4tr { 0%, 100% { opacity: .1; } 50% { opacity: .05; } }
+@keyframes p4spin { to { transform: rotate(360deg); } }
+/* 青光：环边淡入 → 往外走（缓出）→ 到头淡出 → 停一拍；不再硬跳回起点（11-05 用户） */
+@keyframes p4run { 0% { transform: translateX(0); opacity: 0; animation-timing-function: cubic-bezier(.22, .61, .36, 1); } 12% { opacity: 1; } 60% { opacity: 1; } 80% { transform: translateX(var(--len)); opacity: 0; } 100% { transform: translateX(var(--len)); opacity: 0; } }
+@keyframes p4ha { 0%, 100% { transform: scale(1.04); opacity: 1; } 50% { transform: scale(.94); opacity: .55; } }
+#sy-load.sv4.sy-ready .p4logo, #sy-load.sv4.sy-ready .p4glow, #sy-load.sv4.sy-ready .p4halo { animation: none; opacity: 1; }
+#sy-load.sv4.sy-ready .p4rot.b circle { stroke: rgba(236, 238, 240, .55); }
+#sy-load.sv4.sy-ready .p4run { display: none; }
+#sy-load.sv4 .sy-foot { color: rgba(146, 151, 160, .7); bottom: 6px; font-size: 10px; }
+@media (prefers-reduced-motion: reduce) {
+  #sy-load.sv4 .p4fx { transition: none; }
+  #sy-load.sv4 .p4fx * { animation: none !important; }
+  #sy-load.sv4.sy-out { transition-duration: .12s; }
+}
+</style>
+<script>
+// 网页 WebGL 状态缓存（docs/50 §21，10-21）：Godot 网页模板固定用 emscripten 的 OFFSCREEN_FRAMEBUFFER + explicitSwapControl，
+// 每帧 emscripten_webgl_commit_frame → blitOffscreenFramebuffer 先 gl.getParameter(SCISSOR_TEST) / getParameter(FRAMEBUFFER_BINDING)
+// 记下当前状态再把离屏缓冲拷到画布。Chromium 里这两次查询是同步回读：渲染进程要等 GPU 进程把这一帧的命令全部做完才返回，
+// CPU 与 GPU 进程没法流水并行（CDP 采样：后期满屏怪时整页 CPU 的 19% 停在这里）。
+// 这里在建 WebGL2 上下文时包一层：enable / disable / bindFramebuffer 照常调用并顺手记下剪裁开关与绘制帧缓冲绑定，
+// 这两项 getParameter 直接答记下的值（与真实状态相同：所有改它们的调用都经过这层），其余查询原样转发。不改引擎、不改画面。
+// ?glsync=1：关掉（诊断用）；?glcheck=1：每次快答时再问一次真实值，不一致计数进 window.__syGlMismatch 并打印前几条
+(function () {
+  if (/[?&]glsync=1/.test(location.search)) return;
+  var check = /[?&]glcheck=1/.test(location.search);
+  var SCISSOR_TEST = 3089, FRAMEBUFFER = 36160, DRAW_FRAMEBUFFER = 36009, FRAMEBUFFER_BINDING = 36006;
+  var orig = HTMLCanvasElement.prototype.getContext;
+  window.__syGlMismatch = 0;
+  HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+    var gl = orig.call(this, type, attrs);
+    if (!gl || type !== 'webgl2' || gl.__syGlState) return gl;
+    gl.__syGlState = true;
+    var scissor = gl.isEnabled(SCISSOR_TEST), fbo = gl.getParameter(FRAMEBUFFER_BINDING);
+    var en = gl.enable, dis = gl.disable, bind = gl.bindFramebuffer, get = gl.getParameter;
+    gl.enable = function (cap) { if (cap === SCISSOR_TEST) scissor = true; return en.call(gl, cap); };
+    gl.disable = function (cap) { if (cap === SCISSOR_TEST) scissor = false; return dis.call(gl, cap); };
+    gl.bindFramebuffer = function (target, fb) {
+      if (target === FRAMEBUFFER || target === DRAW_FRAMEBUFFER) fbo = fb;
+      return bind.call(gl, target, fb);
+    };
+    gl.getParameter = function (p) {
+      if (p !== SCISSOR_TEST && p !== FRAMEBUFFER_BINDING) return get.call(gl, p);
+      var v = p === SCISSOR_TEST ? scissor : fbo;
+      if (check) {
+        var real = get.call(gl, p);
+        if (real !== v) {
+          window.__syGlMismatch++;
+          if (window.__syGlMismatch <= 5) console.error('GLSTATE mismatch', p, real, v);
+        }
+      }
+      return v;
+    };
+    return gl;
+  };
+})();
+
+// 页面隐藏时挂起音频（docs/50 §33 手机发烫）：切到别的标签 / 回桌面后浏览器会停 requestAnimationFrame（引擎主循环跟着停），
+// 但 Web Audio 的 AudioContext 照转——网页版配乐 / 音效是解码好的样本，留在音频图里继续播放、音频线程一直醒着。
+// 引擎建 AudioContext 之前把构造函数包一层记下实例，visibilitychange 时 suspend / resume。放在 gl_state.js 后面、引擎脚本之前
+(function () {
+	var A = window.AudioContext || window.webkitAudioContext;
+	if (!A) return;
+	var list = [];
+	// 手机网页的音频上下文采样率（docs/50 §40）：引擎把每段样本按「上下文采样率 × 双声道 × float32」整段解码进内存，48 kHz 时 15 秒一句 5.5 MB；
+	// 手机上按 24 kHz 建上下文，样本内存约减半（外放听不出）。网址带 ?sr=<Hz> 可覆盖（0 = 不改）
+	var q = new URLSearchParams(location.search).get("sr");
+	var phone = (navigator.maxTouchPoints > 1 || "ontouchstart" in window) && Math.min(screen.width, screen.height) <= 600;
+	var want = q !== null ? Number(q) : (phone ? 24000 : 0);
+	window.__sySampleRate = want;
+	function Wrapped(opts) {
+		if (want > 0) {
+			opts = Object.assign({}, opts || {}, { sampleRate: want });
+		}
+		var c = opts === undefined ? new A() : new A(opts);
+		list.push(c);
+		if (window.__syGesture) kick(c);   // 加载中已经点过屏幕：引擎晚建的上下文也立刻试着唤醒（Chrome 认粘性激活；Safari 不认就等下一下点按）
+		return c;
+	}
+	Wrapped.prototype = A.prototype;
+	window.AudioContext = Wrapped;
+	if (window.webkitAudioContext) window.webkitAudioContext = Wrapped;
+	window.__syAudioCtx = list;   // 自测用（tools/probes/power_web.py --hidecheck）
+	// 手机要点一下才有声音（11-07 用户「点击了之后才会有声音，就算在加载页也没有声音」）：浏览器只认「激活手势」里唤醒的音频上下文，
+	// 而触屏的 pointerdown 不算激活（HTML 规范：触屏只有 pointerup / touchend / click 算，鼠标是 mousedown / pointerdown，键盘 keydown），
+	// 加载页「开始游戏」原来只在 pointerdown 里 resume，手机上白调——要等进标题页后点某个按钮（touchend）才出声。
+	// 这里从页面一开始就在捕获阶段听这几种手势：每一下都唤醒全部上下文，并在每个上下文里放一段 1 帧静音缓冲（老版 iOS WebKit 要真起一个音源才解锁）；
+	// 全部 running 后撤掉监听。加载中点过屏幕的话，加载完直接有声音
+	function kick(c) {
+		try { if (c.state !== "running" && !document.hidden) c.resume(); } catch (e) {}
+		if (c.__syKicked) return;
+		try {
+			var b = c.createBuffer(1, 1, c.sampleRate), s = c.createBufferSource();
+			s.buffer = b;
+			s.connect(c.destination);
+			s.start(0);
+			c.__syKicked = 1;
+		} catch (e) {}
+	}
+	var GEST = ["pointerup", "touchend", "click", "mousedown", "keydown"];
+	function gesture() {
+		window.__syGesture = 1;
+		var all = list.length > 0;
+		for (var i = 0; i < list.length; i++) {
+			kick(list[i]);
+			if (list[i].state !== "running") all = false;
+		}
+		if (all) GEST.forEach(function (t) { document.removeEventListener(t, gesture, true); });
+	}
+	GEST.forEach(function (t) { document.addEventListener(t, gesture, true); });
+	window.__syAudioKick = gesture;
+	document.addEventListener("visibilitychange", function () {
+		for (var i = 0; i < list.length; i++) {
+			try {
+				if (document.hidden) list[i].suspend();
+				else list[i].resume();
+			} catch (e) {}
+		}
+	});
+})();
+
+// 网页帧时浮层（docs/50 §21.7，10-21）：网址带 ?fps=1 时左上角显示最近 10 秒的帧间隔 平均 / p50 / p95 / p99 与超 16.7 ms 的占比，
+// 每秒刷新；不带参数时什么都不做。给真机 / B站 Toy 预览量帧率用，只读 requestAnimationFrame 的时间戳，不碰游戏
+(function () {
+  if (!/[?&]fps=1/.test(location.search)) return;
+  var ts = [], last = 0, box = null, shown = 0;
+  function pct(a, q) { return a[Math.min(a.length - 1, Math.floor(q * a.length))]; }
+  function tick(t) {
+    if (last > 0) ts.push([t, t - last]);
+    last = t;
+    while (ts.length && t - ts[0][0] > 10000) ts.shift();
+    if (t - shown > 1000 && ts.length > 10) {
+      shown = t;
+      if (!box) {
+        box = document.createElement('div');
+        box.style.cssText = 'position:fixed;left:4px;top:4px;z-index:99999;pointer-events:none;background:rgba(0,0,0,.6);color:#9fe;font:11px/1.35 monospace;padding:3px 6px;white-space:pre';
+        document.body.appendChild(box);
+      }
+      var d = ts.map(function (x) { return x[1]; }).sort(function (a, b) { return a - b; });
+      var sum = 0, over = 0;
+      for (var i = 0; i < d.length; i++) { sum += d[i]; if (d[i] > 16.7) over++; }
+      box.textContent = 'ms  avg ' + (sum / d.length).toFixed(1) + '  p50 ' + pct(d, 0.5).toFixed(1) + '  p95 ' + pct(d, 0.95).toFixed(1) +
+        '  p99 ' + pct(d, 0.99).toFixed(1) + '\n>16.7 ' + (100 * over / d.length).toFixed(0) + '%  n ' + d.length + '  ' + innerWidth + 'x' + innerHeight + ' dpr ' + devicePixelRatio;
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+
+// 性能自检浮层（game/scripts/core/perf_hud.gd，11-07）要的 WASM 内存：引擎建实例时记下它的 WebAssembly.Memory 到 window.__syWasm，
+// 浮层每秒读 buffer.byteLength（iOS Safari 没有 performance.memory，WASM 堆是网页版内存的大头）。只包一次实例化，平时零开销
+(function () {
+  var W = window.WebAssembly;
+  if (!W) return;
+  function keep(imp, res) {
+    try {
+      var m = (imp && imp.env && imp.env.memory) || (imp && imp.a && imp.a.memory);
+      var inst = res && (res.instance || res);
+      if (!m && inst && inst.exports) {
+        for (var k in inst.exports) { if (inst.exports[k] instanceof W.Memory) { m = inst.exports[k]; break; } }
+      }
+      if (!m && imp) {
+        for (var ns in imp) { for (var k2 in imp[ns]) { if (imp[ns][k2] instanceof W.Memory) { m = imp[ns][k2]; break; } } if (m) break; }
+      }
+      if (m) window.__syWasm = m;
+    } catch (e) {}
+    return res;
+  }
+  var OM = W.Memory;   // 引擎在 JS 里建内存（emscripten 导入式）时直接记下
+  W.Memory = function (d) { var m = new OM(d); window.__syWasm = m; return m; };
+  W.Memory.prototype = OM.prototype;
+  var inst = W.instantiate, str = W.instantiateStreaming;
+  W.instantiate = function (src, imp) { return inst.apply(W, arguments).then(function (r) { return keep(imp, r); }); };
+  if (str) W.instantiateStreaming = function (src, imp) { return str.apply(W, arguments).then(function (r) { return keep(imp, r); }); };
+})();
+
+// LZMA（.lzma「alone」格式）解码器，给网页加载器解 index.wasm 的 LZMA 分片（docs/187 §5，export_web.py 用 Python lzma 压）。
+// 本作自写，按 LZMA SDK 公开规格（LzmaSpec）实现，无第三方代码。
+// 直接解进调用方给的 dst（Uint8Array，长度 = 原始字节数）：dst 本身就是滑动窗口，不另分配字典，峰值内存 = 压缩字节 + dst。
+// 压缩端写的是「未知长度 + 结束标记」；这里解满 dst.length 就停，提前遇到结束标记或越界都抛错（加载器会重试该片）。
+function syLzmaDecode(src, dst) {
+  var ip = 13, op = 0, end = dst.length;
+  var d = src[0];
+  if (d >= 225) throw new Error('lzma: parameter header tidak valid');
+  var lc = d % 9; d = (d / 9) | 0;
+  var lp = d % 5, pb = (d / 5) | 0;
+  var pbMask = (1 << pb) - 1, lpMask = (1 << lp) - 1;
+
+  function probs(n) { var a = new Uint16Array(n); a.fill(1024); return a; }
+  var isMatch = probs(192), isRep = probs(12), isRepG0 = probs(12), isRepG1 = probs(12), isRepG2 = probs(12), isRep0Long = probs(192);
+  var lit = probs(0x300 << (lc + lp));
+  var posSlot = probs(256), posDec = probs(115), align = probs(16);
+  function lenCoder() { return { c: probs(2), low: probs(128), mid: probs(128), high: probs(256) }; }
+  var lenDec = lenCoder(), repLenDec = lenCoder();
+
+  // 区间解码器
+  if (src[ip] !== 0) throw new Error('lzma: byte awal range decoder harus 0');
+  var range = 0xFFFFFFFF, code = ((src[ip + 1] << 24) | (src[ip + 2] << 16) | (src[ip + 3] << 8) | src[ip + 4]) >>> 0;
+  ip += 5;
+  function bit(p, i) {
+    var v = p[i], bound = (range >>> 11) * v;
+    var b;
+    if (code < bound) { range = bound; p[i] = v + ((2048 - v) >>> 5); b = 0; }
+    else { range -= bound; code -= bound; p[i] = v - (v >>> 5); b = 1; }
+    if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + src[ip++]) >>> 0; }
+    return b;
+  }
+  function direct(n) {
+    var r = 0;
+    while (n--) {
+      range >>>= 1;
+      var b = code >= range ? 1 : 0;
+      if (b) code -= range;
+      r = r * 2 + b;
+      if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + src[ip++]) >>> 0; }
+    }
+    return r;
+  }
+  function tree(p, base, n) {
+    var m = 1;
+    for (var i = 0; i < n; i++) m = (m << 1) | bit(p, base + m);
+    return m - (1 << n);
+  }
+  function rtree(p, base, n) {
+    var m = 1, s = 0;
+    for (var i = 0; i < n; i++) { var b = bit(p, base + m); m = (m << 1) | b; s |= b << i; }
+    return s;
+  }
+  function len(L, ps) {
+    if (bit(L.c, 0) === 0) return tree(L.low, ps << 3, 3);
+    if (bit(L.c, 1) === 0) return 8 + tree(L.mid, ps << 3, 3);
+    return 16 + tree(L.high, 0, 8);
+  }
+
+  var state = 0, rep0 = 0, rep1 = 0, rep2 = 0, rep3 = 0;
+  while (op < end) {
+    var ps = op & pbMask;
+    if (bit(isMatch, (state << 4) + ps) === 0) {
+      var prev = op > 0 ? dst[op - 1] : 0;
+      var base = 0x300 * (((op & lpMask) << lc) + (prev >>> (8 - lc)));
+      var sym = 1;
+      if (state >= 7) {
+        var mb = dst[op - rep0 - 1];
+        do {
+          var mbit = (mb >>> 7) & 1; mb <<= 1;
+          var b = bit(lit, base + ((1 + mbit) << 8) + sym);
+          sym = (sym << 1) | b;
+          if (mbit !== b) break;
+        } while (sym < 0x100);
+      }
+      while (sym < 0x100) sym = (sym << 1) | bit(lit, base + sym);
+      dst[op++] = sym & 0xFF;
+      state = state < 4 ? 0 : (state < 10 ? state - 3 : state - 6);
+      continue;
+    }
+    var n;
+    if (bit(isRep, state) === 0) {
+      rep3 = rep2; rep2 = rep1; rep1 = rep0;
+      n = len(lenDec, ps);
+      state = state < 7 ? 7 : 10;
+      var slot = tree(posSlot, (n < 3 ? n : 3) << 6, 6);
+      if (slot < 4) rep0 = slot;
+      else {
+        var nd = (slot >>> 1) - 1, dist = (2 | (slot & 1)) * Math.pow(2, nd);
+        if (slot < 14) dist += rtree(posDec, dist - slot, nd);
+        else dist += direct(nd - 4) * 16 + rtree(align, 0, 4);
+        if (dist === 0xFFFFFFFF) throw new Error('lzma: penanda akhir muncul terlalu cepat (' + op + ' / ' + end + ')');
+        rep0 = dist;
+      }
+    } else {
+      if (op === 0) throw new Error('lzma: data diawali repeat match');
+      if (bit(isRepG0, state) === 0) {
+        if (bit(isRep0Long, (state << 4) + ps) === 0) {
+          state = state < 7 ? 9 : 11;
+          dst[op] = dst[op - rep0 - 1]; op++;
+          continue;
+        }
+      } else {
+        var dd;
+        if (bit(isRepG1, state) === 0) dd = rep1;
+        else {
+          if (bit(isRepG2, state) === 0) dd = rep2;
+          else { dd = rep3; rep3 = rep2; }
+          rep2 = rep1;
+        }
+        rep1 = rep0; rep0 = dd;
+      }
+      n = len(repLenDec, ps);
+      state = state < 7 ? 8 : 11;
+    }
+    n += 2;
+    if (rep0 >= op) throw new Error('lzma: jarak match melampaui batas');
+    if (op + n > end) throw new Error('lzma: ukuran hasil dekompresi melebihi panjang asli');
+    var from = op - rep0 - 1;
+    while (n--) dst[op++] = dst[from++];
+  }
+  if (ip > src.length) throw new Error('lzma: data terkompresi tidak lengkap');
+  return op;
+}
+if (typeof module !== 'undefined') module.exports = syLzmaDecode;
+
+// 网页版加载器（tools/export_web.py 把它内联进 index.html 的 <!--SHUIYUE_LOADER--> 处，见 docs/22）
+// 1. 分片：index.pck / index.wasm 在导出后被切成若干 gzip 分片（单文件 ≤20 MiB，避开托管平台 25 MB 上限）。
+//    拦截引擎对这两个文件的 fetch，并行下载全部分片 → 边下边解压、直接写进一块预先按原文件大小分配好的 Uint8Array 的对应位置
+//    （清单里每片带原始长度 p[2]）→ 整块交给引擎。游戏代码不动。
+//    2026-10-11 之前是「每片先收齐 gz 字节 → 解开成一块 → 全部分片再拼成整块」，解开的分片和整块同时在内存里，
+//    JS 这一侧峰值约 2–3 倍原始大小（docs/33 移动端）。现在 gz 字节与解开的小块都只是流里的临时块，用完即回收，
+//    JS 峰值 ≈ 原文件大小（pck + wasm 共约 65 MiB），给 2–3 GB 内存的老手机留余量。
+//    浏览器若自作主张解压（Content-Encoding: gzip 被服务器改写），读到的就是原始字节，照样按位置写入。
+//    没有 DecompressionStream 的老浏览器（Safari 16.3 以前）：收齐 gz 字节再 inflate（纯 JS，下面的 inflate）。
+// 2. 加载画面「声呐测绘」（用户 10-25 定，样式在 loader.css）：声呐进度环 = 下载字节进度占 0–60%，下载解压完以后是引擎启动（拿不到真实进度），
+//    环按已等秒数向 80% 渐近；引擎起来后 boot_screen.gd 回传实际进度，仍显示这同一页，
+//    逐个编译脚本并准备主菜单；扫描扇面是 CSS 动画，主线程被引擎占住时也在转。左下日志：下载资源 → 解压校验 → 准备主菜单；
+//    右下提示每 4 秒换一句（同 game/scripts/screens/loading_tips.gd，改机制时一起核对）。
+//    Godot 主菜单就绪（__syBootDone）后撤掉；引擎报错时撤掉，让报错露出来。
+(function () {
+  var M = {"index.pck":{"size":51283624,"type":"application/octet-stream","parts":[["index.pck.00.gz",9488872,10485760],["index.pck.01.gz",9777434,10485760],["index.pck.02.gz",9723936,10485760],["index.pck.03.gz",6997501,10485760],["index.pck.04.gz",5716711,9340584]]},"index.wasm":{"size":39514754,"type":"application/wasm","parts":[["index.wasm.00.lzma",3392148,20971520],["index.wasm.01.lzma",3343427,18543234]],"enc":"lzma"}};
+  if (!M) return;
+  var total = 0, got = 0, done = false;
+  Object.keys(M).forEach(function (k) { M[k].parts.forEach(function (p) { total += p[1]; }); });
+
+  var el = {}, bootT0 = 0, bootProgress = null, bootLabel = "", shownProgress = 0;
+  var TIPS = [
+    '3 detik sebelum "Gelombang Besar", peringatan ungu akan muncul. Selalu ada satu celah tanpa panah sebagai jalur keluar.',
+    'Kebal terhadap serangan selama Dash.',
+    'Lentera hanya berkurang saat terkena hit; ambil minyak lampu untuk mengisi ulang. Saat Lentera >= 70, pemulihan SP +30%.',
+    'Pedagang muncul di menit 2:00, 5:00, dan 8:00, hanya bertahan selama 60 detik.',
+    'Mulai 2:30, zona aman menyusut dalam 4 tahap. Masuklah ke lingkaran garis putih saat muncul "Pasang Hitam Mendekat".',
+    'Seaborn berkamuflase peti suplai akan menyergap saat didekati; kalahkan untuk 10 Originium Ingot.',
+    'Mengambil Relik yang sama lagi akan meningkatkan levelnya.',
+    'Elite 1 membuka Skill 2 dan Talenta; Elite 2 membuka Skill 3.'
+  ];
+  var R = 192, C = 2 * Math.PI * R;
+  function mb(x) { return (x / 1048576).toFixed(1); }
+  function upd() {
+    if (!el.ring) return;
+    var f, busy = false;
+    if (bootProgress !== null) { f = bootProgress; busy = true; }
+    else if (!done) f = 0.6 * Math.min(got / Math.max(1, total), 1);
+    else {
+      if (!bootT0) bootT0 = performance.now();
+      var s = (performance.now() - bootT0) / 1000;
+      f = BV === 4 ? 0.6 : 0.6 + 0.2 * (1 - Math.exp(-s / 6));   // 方向 4（PRTS 认证终端）：拿不到真实进度就不动，刻度环上显示不定进度（p4Init）   // 引擎启动：拿不到真实进度，按已等秒数向 80% 渐近；之后游戏内启动页（boot_screen.gd）从 80% 接着走
+      busy = true;
+    }
+    f = shownProgress = Math.max(shownProgress, Math.min(1, f));
+    window.__syPct = f;   // 游戏内启动页从这里接着走（boot_screen.gd）
+    if (el.v) {   // 新方向：按真实阶段记系统日志
+      var dl0 = got >= total, st;
+      if (!dl0) st = { key: 'dl', text: 'Unduh Aset · ' + mb(Math.min(got, total)) + ' / ' + mb(total) + ' MB' };
+      else if (!done) st = { key: 'unz', text: 'Ekstrak & Verifikasi' };
+      else if (bootProgress === null) st = { key: 'eng', text: 'Menjalankan Engine · ' + Math.floor((performance.now() - bootT0) / 1000) + ' dtk' };
+      else if (bootLabel === 'Menyiapkan Menu Utama' && !logs.some(function (l) { return l.key.indexOf('bMemuat') === 0 || l.key.indexOf('bKompilasi') === 0; })) st = { key: 'eng', text: 'Menjalankan Engine', ok: true };
+      else st = { key: 'b' + bootLabel, text: String(bootLabel).replace(/^Memuat · /, 'Kompilasi · ').replace(/^Menyiapkan Menu Utama$/, 'Pemanasan Render · Menu Utama'), ok: bootProgress >= 1 };
+      if (!logs.length) logs.push({ key: 'wake', t: 0, s: 'Terminal Aktif · Tautan Terhubung', ok: true });
+      updV(el.v, f, st);
+      return;
+    }
+    el.ring.style.strokeDashoffset = String(C * (1 - f));
+    el.num.innerHTML = Math.floor(f * 100) + '<span>%</span>';
+    var dl = got >= total;
+    el.l1.className = dl ? 'ok' : 'now';
+    el.l1.innerHTML = (dl ? '<b>[ OK ]</b>' : '<b>[ .. ]</b>') + 'Unduh Aset  ' + mb(Math.min(got, total)) + ' / ' + mb(total) + ' MB';
+    el.l2.className = done ? 'ok' : (dl ? 'now' : '');
+    el.l2.innerHTML = (done ? '<b>[ OK ]</b>' : (dl ? '<b>[ .. ]</b>' : '<b>[ -- ]</b>')) + 'Ekstrak & Verifikasi';
+    el.l3.className = busy ? 'now' : '';
+    el.l3.innerHTML = (busy ? '<b>[ .. ]</b>' : '<b>[ -- ]</b>') + 'Menjalankan Engine' + (busy ? '  ' + Math.floor((performance.now() - bootT0) / 1000) + ' dtk' : '');
+    if (bootProgress !== null) el.l3.textContent = (bootProgress >= 1 ? '[ OK ] ' : '[ .. ] ') + bootLabel;
+  }
+
+  // ---------------------------------------------------------------- 启动页新方向（10-30 用户「更加有 PRTS 的感觉，但是保留点深海的特色」）
+  // ui/boot_v（导出时写进 /*SHUIYUE_BOOT_V*/，网址 ?boot=N 可临时换）：0 = 上面的「声呐测绘」原样；1 终端开机 / 2 深潜 / 3 声呐终端，
+  // 画法与游戏内 boot_views.gd 同一套（桌面原生包看那边，网页只看这里）。系统日志按真实阶段逐行加（下载 → 解压 → 启动引擎 → Godot 回传的编译类别 → 主菜单），
+  // 进度同上面的 f；海雪微粒 / 扫描扇面 / 光标都是 CSS 动画（合成线程跑，引擎占住主线程时也在动），系统「减少动态效果」时停住。
+  var BV = (function () { var q = typeof location !== 'undefined' && /[?&]boot=(\d)/.exec(location.search); return q ? +q[1] : 4; })();
+  var t0 = performance.now(), logs = [], logKey = '';
+  function nowS() { return (performance.now() - t0) / 1000; }
+  // 同一阶段 / 类别只占一行（Godot 回传的编译类别是穿插着来的，再读到就回到那一行、不刷新行）；
+  // 换到新阶段时它之前的非编译行标 OK，编译阶段结束（准备主菜单）时全部类别标 OK
+  function logStep(key, text, ok) {
+    var hit = -1;
+    for (var i = 0; i < logs.length; i++) if (logs[i].key === key) hit = i;
+    var comp = key.indexOf('bMemuat') === 0 || key.indexOf('bKompilasi') === 0;
+    if (hit < 0) {
+      logs.forEach(function (l) { if (!comp || (l.key.indexOf('bMemuat') !== 0 && l.key.indexOf('bKompilasi') !== 0)) l.ok = true; });
+      logs.push({ key: key, t: nowS(), s: text, ok: !!ok });
+      hit = logs.length - 1;
+    } else { logs[hit].s = text; if (ok) logs[hit].ok = true; }
+    logKey = key;
+  }
+  function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
+  function snowLayer(n) {   // 海雪：一个 1px 元素挂 n 个 box-shadow，整层向上平移循环
+    var sh = [];
+    for (var i = 0; i < n; i++) {
+      var h1 = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1, h2 = Math.abs(Math.sin(i * 78.233) * 12543.123) % 1;
+      sh.push((h1 * 100).toFixed(2) + 'vw ' + (h2 * 100).toFixed(2) + 'vh 0 ' + (h2 > 0.6 ? '1px' : '0') + ' rgba(150,230,240,' + (0.15 + 0.35 * h2).toFixed(2) + ')');
+    }
+    return '<div class="sv-snow"><i style="box-shadow:' + sh.join(',') + '"></i><i style="box-shadow:' + sh.join(',') + '"></i></div>';
+  }
+  var JELLY = '<svg class="sv-jelly" viewBox="-40 -30 80 100"><path d="M-34 0 A34 26 0 0 1 34 0 Q28 4 22 0 Q17 4 11 0 Q6 4 0 0 Q-6 4 -11 0 Q-17 4 -22 0 Q-28 4 -34 0Z" fill="rgba(140,235,242,.16)" stroke="rgba(150,240,255,.5)" stroke-width="1.2"/>' +
+    '<g fill="none" stroke="rgba(150,240,255,.32)" stroke-width="1"><path d="M-24 3 q3 16 -1 32 t1 30"/><path d="M-12 3 q-3 18 1 34 t-1 28"/><path d="M0 3 q3 18 -1 36 t1 26"/><path d="M12 3 q-3 16 1 32 t-1 30"/><path d="M24 3 q3 18 -1 34 t1 24"/></g></svg>';
+  var FOOT = '<div class="sy-foot">Karya Penggemar Arknights · Non-Komersial · Tidak Berafiliasi dengan Hypergryph</div>';
+  function head(title, code) {
+    return '<div class="sv-head"><b class="sy-en">PRTS</b><span>' + title + '</span>' + (code ? '<em class="sv-code"></em>' : '') + '</div>';
+  }
+  function logBox(cls) { return '<div class="sv-log ' + (cls || '') + '"><div class="sv-cap sy-en">SYSTEM LOG</div><div class="sv-lines"></div></div>'; }
+  function tipBox(cls) { return '<div class="sv-tip ' + (cls || '') + '"><div class="sv-cap sy-en">NOTE</div><div class="bd"></div></div>'; }
+
+  // ---------------------------------------------------------------- 方向 4：PRTS 认证终端（11-05 用户「codex 的加载页可以替换我们目前的加载页」）
+  // 起点是 Codex 演示（docs/reference/prts-entry-1105），同日按用户意见对齐局内 PRTS（画法与桌面 boot_views.draw_v4 一一对应）：
+  // 标志呼吸 + 光晕 + 大淡三角、外圈细环上两组反向慢转弧段、方位菱形节点 + 读数、环两侧水平细线 + 往外走的青光、60 格刻度环 = 进度。
+  // 进度全接真实状态：下载字节 → 解压 → 引擎启动（拿不到进度：不定进度——刻度环上一段青格慢转、百分比 ---，不按时间推）→ Godot 回传 → 读完整圈转青。
+  // 标志 = loader_rhodes.png（用户给的 240×240 原图）最近邻采样到 120×120，亮度 > 112 留、> 168 冷白、其余次灰（同 screens/rhodes_logo.gd）。
+  // 11-05 用户「为什么感觉有点卡」：引擎编译 wasm / Godot 编译脚本时主线程会被占住几百毫秒到几秒，画布那几秒停住。
+  // 所以凡是「一直在动」的（标志 / 光晕 / 三角呼吸、弧段转动、细线青光）都是 DOM + CSS 动画（只动 opacity / transform，走合成线程，主线程忙时照样流畅）；
+  // 画布只画静态底 + 进度（刻度、文字、分项），内容变了才重画。系统「减少动态效果」时 CSS 动画全停。
+  function p4Init(d) {
+    var cv = d.querySelector('.p4c'), ctx = cv.getContext('2d'), fx = d.querySelector('.p4fx');
+    var v = { root: d, tip: { style: {}, textContent: '' }, f: 0, stage: { text: '' }, ind: false, lines: null };
+    var rm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var img = new Image(), T0 = performance.now(), readyT = -1, lastSig = '', lay = '';
+    img.onload = function () {
+      var a = fx.querySelector('.p4logo'), ax = a.getContext('2d');
+      ax.imageSmoothingEnabled = false; ax.drawImage(img, 0, 0, 120, 120);
+      var id = ax.getImageData(0, 0, 120, 120), px = id.data;
+      for (var i = 0; i < px.length; i += 4) {
+        var lv = (px[i] + px[i + 1] + px[i + 2]) / 3;
+        if (lv > 112 && px[i + 3] > 127) { var hi = lv > 168; px[i] = hi ? 236 : 146; px[i + 1] = hi ? 238 : 151; px[i + 2] = hi ? 240 : 160; px[i + 3] = 255; }
+        else px[i + 3] = 0;
+      }
+      ax.putImageData(id, 0, 0);
+      fx.classList.add('on');   // 淡入（CSS transition）
+    };
+    img.src = 'loader_rhodes.png';
+    var BG = '#0f1013', TX = '#eceef0', SUB = '#9297a0', ACC = '#36e2dc', RULE = '#353943';
+    var clamp = function (x) { return Math.max(0, Math.min(1, x)); }, ease = function (x) { return 1 - Math.pow(1 - clamp(x), 3); };
+    function box(x, y, w, h, c, a) { ctx.globalAlpha = a === undefined ? 1 : a; ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), Math.ceil(w), Math.ceil(h)); ctx.globalAlpha = 1; }
+    function lab(s, x, y, sz, c, al) { ctx.fillStyle = c; ctx.font = Math.round(sz) + 'px Consolas,"Microsoft YaHei","PingFang SC",monospace'; ctx.textAlign = al || 'left'; ctx.fillText(s, Math.round(x), Math.round(y)); }
+    function head(x, y, s, k, rw) { box(x, y - 6 * k, 18 * k, 2, TX); lab(s, x + 26 * k, y, 13 * k, TX); box(x, y + 12 * k, rw, 1, RULE); }
+    // 动效层的位置（CSS 像素），只在窗口尺寸变时重排
+    function layout(W, H, dpr, k, cx, cy, span, R, R2, hl, hx1) {
+      var key = W + 'x' + H;
+      if (lay === key) return;
+      lay = key;
+      var q = function (sel) { return fx.querySelector(sel); }, px = function (x) { return (x / dpr).toFixed(1) + 'px'; };
+      fx.style.cssText = 'left:' + px(cx) + ';top:' + px(cy);
+      var lg = q('.p4logo'); lg.style.width = lg.style.height = px(span); lg.style.left = lg.style.top = px(-span / 2);
+      var ha = q('.p4halo'); ha.style.width = ha.style.height = px(R * 2.5); ha.style.left = ha.style.top = px(-R * 1.25);
+      var gw = q('.p4glow'); gw.style.width = gw.style.height = px(span * 1.3); gw.style.left = gw.style.top = px(-span * 0.65);
+      var T = R * 0.66 / 0.66 * 1.5, tri = q('.p4tri');   // 外接圆 1.5 倍环
+      tri.setAttribute('viewBox', [-T, -T, 2 * T, 2 * T].join(' ')); tri.style.width = tri.style.height = px(2 * T); tri.style.left = tri.style.top = px(-T);
+      tri.innerHTML = '<polygon points="0,' + (-T) + ' ' + (T * 0.866) + ',' + (T * 0.5) + ' ' + (-T * 0.866) + ',' + (T * 0.5) + '"/>';
+      [['.p4rot.a', R2, 3, 34, 1.5], ['.p4rot.b', R2 + 7 * k, 2, 14, 2]].forEach(function (o) {
+        var el = q(o[0]), r = o[1], cc = 2 * Math.PI * r, seg = cc * o[3] / 360, gap = cc / o[2] - seg, e = r + 4 * k;
+        el.style.width = el.style.height = px(2 * e); el.style.left = el.style.top = px(-e);
+        el.innerHTML = '<svg viewBox="' + [-e, -e, 2 * e, 2 * e].join(' ') + '"><circle r="' + r + '" stroke-width="' + o[4] * dpr + '" stroke-dasharray="' + seg + ' ' + gap + '"/></svg>';
+      });
+      var len = hl - (hx1 - cx);
+      ['.p4run.r', '.p4run.l'].forEach(function (sel, i) {
+        var el = q(sel);
+        el.style.cssText = 'left:' + px(i ? -(hx1 - cx) - len : hx1 - cx) + ';top:' + px(0) + ';width:' + px(len) + ';--len:' + px(len - 26 * k) + ';--w:' + px(26 * k);
+      });
+    }
+    function frame() {
+      if (!d.isConnected) return;
+      requestAnimationFrame(frame);
+      var dpr = Math.min(2, window.devicePixelRatio || 1), W = Math.round(innerWidth * dpr), H = Math.round(innerHeight * dpr);
+      var t = (performance.now() - T0) / 1000, p = v.f, rd = d.classList.contains('sy-ready') || p >= 1;
+      if (rd && readyT < 0) readyT = performance.now();
+      var u = readyT < 0 ? -1 : (performance.now() - readyT) / 1000;
+      // 画布只在内容变时重画（进度格 / 日志 / 阶段 / 不定进度的转格 / 读完脉冲 / 计时到 0.1 秒）
+      var spin = Math.floor((t * 14) % 60);
+      var sig = [W, H, Math.floor(p * 1000), v.stage.text, logs.length, logs.filter(function (l) { return l.ok; }).length, v.ind ? spin : -1, rd, rd && u < 0.6 ? Math.floor(u * 30) : -1, Math.floor(t * 30), got, done, bootProgress].join('|');   // 30 次 / 秒：刻度环 / 当前格 / 日志小方块随呼吸
+      if (sig === lastSig) return;
+      lastSig = sig;
+      if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+      var k = Math.max(0.8, Math.min(2.4, H / 540)), cx = W / 2, cy = H * 0.42, m = 22 * k;
+      var br = rm ? 1 : 0.5 + 0.5 * Math.cos(t * 2 * Math.PI / 2.6), rb = rd ? 1 : 0.8 + 0.2 * br;   // 呼吸相位（同 CSS p4br：0 秒最亮）
+      var span = 120 * Math.max(1, Math.floor(H * 0.34 / 120)), R = span * 0.66, R2 = R + 22 * k;
+      var hx0 = cx - R - 46 * k, hx1 = cx + R + 46 * k, hl = W > 760 * dpr ? W / 2 - 200 * k : W / 2 - 10;
+      layout(W, H, dpr, k, cx, cy, span, R, R2, hl, hx1);
+      box(0, 0, W, H, BG);
+      ctx.fillStyle = SUB; ctx.globalAlpha = 0.12;
+      for (var gx = 0; gx < W; gx += 24 * k) for (var gy = 0; gy < H; gy += 24 * k) ctx.fillRect(Math.round(gx), Math.round(gy), 1, 1);
+      ctx.fillStyle = '#000';
+      for (var sy = 0; sy < H; sy += 3) ctx.fillRect(0, sy, W, 1);
+      ctx.globalAlpha = 1;
+      lab('SYS 1105 · T+' + ('00' + (rm ? 0 : t).toFixed(1)).slice(-5), cx, 28 * k, 10 * k, SUB, 'center');
+      lab('PRTS', m, 28 * k, 12 * k, TX); lab('/ VERIFIKASI BOOT', m + 44 * k, 28 * k, 12 * k, SUB);
+      if (W > 600 * dpr) lab('ARKNIGHTS FAN GAME', W - m, 28 * k, 11 * k, SUB, 'right');
+      box(m, 40 * k, W - 2 * m, 1, RULE);
+      box(cx - hl, cy, hx0 - (cx - hl), 1, RULE); box(hx1, cy, cx + hl - hx1, 1, RULE);
+      box(cx - hl - 1.5, cy - 1, 3, 3, SUB); box(cx + hl - 1.5, cy - 1, 3, 3, SUB);
+      var lit = Math.floor(p * 60);
+      ctx.lineCap = 'butt';
+      for (var i = 0; i < 60; i++) {
+        var a = -Math.PI / 2 + 2 * Math.PI * i / 60, mj = i % 5 === 0, l = (mj ? 9 : 5) * k, col, al;
+        if (rd) { col = ACC; al = 0.9; }
+        else if (v.ind && ((i - spin + 60) % 60) < 5) { col = ACC; al = 0.35 + 0.13 * ((i - spin + 60) % 60); }   // 不定进度：一段青格慢转
+        else if (i < lit) { col = TX; al = 0.85; }
+        else if (i === lit && !v.ind) { col = ACC; al = (0.55 + 0.45 * br) / rb; }   // 当前格随呼吸闪
+        else { col = SUB; al = 0.2 + 0.14 * br; }
+        ctx.globalAlpha = Math.min(1, al * rb); ctx.strokeStyle = col; ctx.lineWidth = (mj ? 2 : 1.5) * dpr;
+        ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); ctx.lineTo(cx + Math.cos(a) * (R + l), cy + Math.sin(a) * (R + l)); ctx.stroke();
+      }
+      ctx.globalAlpha = 0.18; ctx.strokeStyle = SUB; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, R - 6 * k, 0, 2 * Math.PI); ctx.stroke();
+      ctx.globalAlpha = 0.1 + 0.12 * br; ctx.beginPath(); ctx.arc(cx, cy, R2, 0, 2 * Math.PI); ctx.stroke();
+      if (rd && !rm && u >= 0 && u < 0.5) { var q = ease(u / 0.5); ctx.globalAlpha = 0.6 * (1 - q); ctx.strokeStyle = ACC; ctx.lineWidth = 1.5 * dpr; ctx.beginPath(); ctx.arc(cx, cy, R + 14 * k + q * 40 * k, 0, 2 * Math.PI); ctx.stroke(); }
+      var nd = 4 * k;
+      for (var j = 0; j < 4; j++) {
+        var na = -Math.PI / 2 + j * Math.PI / 2, nx = cx + Math.cos(na) * R2, ny = cy + Math.sin(na) * R2;
+        ctx.globalAlpha = 0.7; ctx.fillStyle = j === 2 ? SUB : TX;
+        ctx.beginPath(); ctx.moveTo(nx, ny - nd); ctx.lineTo(nx + nd, ny); ctx.lineTo(nx, ny + nd); ctx.lineTo(nx - nd, ny); ctx.closePath(); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      lab('000', cx, cy - R2 - 10 * k, 9 * k, SUB, 'center'); lab('090', cx + R2 + 10 * k, cy - 6 * k, 9 * k, SUB); lab('270', cx - R2 - 10 * k, cy - 6 * k, 9 * k, SUB, 'right');
+      var ly = cy + R + 48 * k;
+      if (!rd) {
+        lab(v.stage.text || '', cx, ly, 16 * k, TX, 'center');
+        lab('ARCHIVE INDEX  ' + (v.ind ? '---' : ('00' + Math.floor(p * 100)).slice(-3)) + '%', cx, ly + 20 * k, 10 * k, SUB, 'center');
+      } else lab('AUTENTIKASI BERHASIL', cx, Math.min(ly, (Math.min(innerHeight * 0.8, innerHeight - 60 - 25) - 25 - 18) * dpr), 16 * k, ACC, 'center');
+      if (W > 760 * dpr) {
+        var lx = m, rx = W - m - 150 * k, py = 104 * k;
+        head(lx, py, 'VERIFIKASI BOOT', k, 170 * k);
+        logs.slice(Math.max(0, logs.length - 4)).forEach(function (ln, i) {
+          var yy = py + 35 * k + i * 24 * k;
+          box(lx, yy - 4 * k, 3 * k, 3 * k, ln.ok ? TX : (ln.key === logKey ? ACC : RULE), ln.ok || ln.key !== logKey ? 1 : 0.45 + 0.55 * br);
+          lab(ln.s, lx + 12 * k, yy + 1 * k, 11 * k, ln.ok ? TX : SUB);
+        });
+        head(rx, py, 'INDEKS ASET', k, 150 * k);
+        var bp = bootProgress === null ? 0 : clamp((bootProgress - 0.6) / 0.4);
+        [['DOWNLOAD', clamp(got / Math.max(1, total))], ['UNPACK', done ? 1 : 0], ['ENGINE', bootProgress !== null ? 1 : -1], ['WARMUP', rd ? 1 : bp]].forEach(function (q2, i) {
+          var yb = py + 38 * k + i * 32 * k, fq = q2[1];
+          lab(q2[0], rx, yb, 10 * k, SUB); box(rx, yb + 8 * k, 150 * k, 1, RULE);
+          if (fq < 0) { var eph = (t / 1.6) % 1; if (done) box(rx + ease(eph) * 126 * k, yb + 7.5 * k, 24 * k, 2, ACC, Math.sin(eph * Math.PI)); }   // 引擎启动：不定进度（两端淡入淡出，不硬跳回）
+          else box(rx, yb + 7.5 * k, Math.floor(fq * 150 * k), 2, fq >= 1 ? ACC : TX);
+        });
+      }
+      lab('RHODES ISLAND', m, H - 20 * k, 11 * k, SUB);
+      ctx.globalAlpha = rd ? 1 : 0.6 + 0.4 * br;
+      lab(rd ? 'ACCESS / GRANTED' : 'ACCESS / PENDING', W - m, H - 20 * k, 11 * k, rd ? ACC : SUB, 'right');
+      ctx.globalAlpha = 1;
+    }
+    requestAnimationFrame(frame);
+    return v;
+  }
+
+  function buildV(d) {
+    var segs = '';
+    for (var i = 0; i < 50; i++) segs += '<i></i>';
+    var h = '';
+    if (BV === 4) {   // PRTS 认证终端（11-05，Codex docs/reference/prts-entry-1105；同桌面 boot_views.draw_v4）：画布逐帧画，扫描线 / 不定进度是 CSS 动画
+      h = '<canvas class="p4c"></canvas><div class="p4fx"><b class="p4halo"></b><b class="p4glow"></b><svg class="p4tri"></svg><canvas class="p4logo" width="120" height="120"></canvas>' +
+        '<div class="p4rot a"></div><div class="p4rot b"></div><div class="p4run r"><b></b></div><div class="p4run l"><b></b></div></div>';
+    } else if (BV === 1) {
+      h = '<div class="sv-scan"></div>' + snowLayer(46) + head('TERMINAL OPERASI RHODES ISLAND · BOOT', 1) +
+        '<div class="sv-body1">' + logBox('sv-frame') + tipBox() + '</div>' +
+        '<div class="sv-prog"><div class="sv-segs">' + segs + '</div><div class="sv-pct">000%</div><div class="sv-what"></div></div>';
+    } else if (BV === 2) {
+      var ticks = '';   // 深度尺：每 10 m 一格、每 100 m 长刻度 + 读数（0–1500 m，1.2 px / m，随进度整条上移）
+      for (var dm = 0; dm <= 1500; dm += 10) {
+        ticks += '<i class="' + (dm % 100 ? '' : 'mj') + '" style="top:' + (dm * 1.2) + 'px">' + (dm % 100 ? '' : '<b>-' + dm + '</b>') + '</i>';
+      }
+      h = '<div class="sv-deep"></div>' + snowLayer(60) + head('OBSERVASI LAUT DALAM · TAUTAN TERMINAL', 0) +
+        '<div class="sv-body2">' + logBox('sv-frame') + tipBox() + '</div>' +
+        '<div class="sv-gauge"><div class="sv-rule"><div class="sv-ruler">' + ticks + '</div></div><div class="sv-read"><div class="sv-cap sy-en">DEPTH</div><div class="sv-depth">-0000<small>m</small></div><div class="sv-sync"></div></div></div>' +
+        '<div class="sv-jwrap">' + JELLY + '</div>';
+    } else {   // 3 声呐终端（10-31 第三版：照用户给的 PRTS 参考做终端版式（同日用户「不要用浅色」改成深海底浅色线）——盘后巨大空心 PRTS、圈心本作徽记、右上低多边形网格；
+               //   去掉水母；声呐接触点 = 日志里的每一项真实加载步骤，扫描扇面扫过时闪亮，读完变实心；读到最后整屏渐暗成深海色接标题页）
+      var tk = '', lab = '';
+      for (var k = 0; k < 72; k++) {
+        var a = -Math.PI / 2 + 2 * Math.PI * k / 72, mj = k % 6 === 0, r0 = 188, r1 = mj ? 200 : 194;
+        tk += '<line x1="' + (Math.cos(a) * r0).toFixed(1) + '" y1="' + (Math.sin(a) * r0).toFixed(1) + '" x2="' + (Math.cos(a) * r1).toFixed(1) + '" y2="' + (Math.sin(a) * r1).toFixed(1) + '" stroke-width="' + (mj ? 2 : 1.5) + '"/>';
+      }
+      [[0, -214], [222, 4], [0, 224], [-222, 4]].forEach(function (q, i) { lab += '<text x="' + q[0] + '" y="' + q[1] + '">' + ('00' + i * 90).slice(-3) + '</text>'; });
+      // 低多边形网格（几何动效，10-31）：右上一片（左下会压到系统日志），连线按进度逐条亮出（updV 给前 n 条加 on），节点缓慢漂移（CSS）
+      var net = '';
+      [0].forEach(function (corner) {
+        var np = [];
+        for (var ni = 0; ni < 16; ni++) {
+          var hx = Math.abs(Math.sin((ni + corner * 31) * 91.7) * 4375.85) % 1, hy = Math.abs(Math.sin((ni + corner * 31) * 47.3) * 2937.11) % 1;
+          var qx = 34 * hx, qy = 34 * hy * hy;
+          np.push(corner === 0 ? [100 - qx, qy] : [qx, 100 - qy]);
+        }
+        np.forEach(function (pt, i) {
+          var ds = np.map(function (q, j) { return [Math.hypot((q[0] - pt[0]) * 16 / 9, q[1] - pt[1]), j]; }).filter(function (x) { return x[1] !== i; }).sort(function (x, y) { return x[0] - y[0]; });
+          for (var kk = 0; kk < 3; kk++) net += '<line x1="' + pt[0].toFixed(2) + '" y1="' + pt[1].toFixed(2) + '" x2="' + np[ds[kk][1]][0].toFixed(2) + '" y2="' + np[ds[kk][1]][1].toFixed(2) + '"/>';
+        });
+        np.forEach(function (pt, i) { net += '<rect class="nd" x="' + (pt[0] - 0.2).toFixed(2) + '" y="' + (pt[1] - 0.35).toFixed(2) + '" width=".4" height=".7" style="animation-delay:-' + (i * 0.7).toFixed(1) + 's"/>'; });
+      });
+      var wave = '';
+      for (var wi = 0; wi <= 20; wi++) wave += (wi === 0 ? 'M' : 'L') + (-33 + 66 * wi / 20).toFixed(1) + ' ' + (27 + Math.sin(wi / 20 * 2 * Math.PI) * 3.2).toFixed(1);   // 徽记里的一道浪
+      h = '<svg class="sv-net" viewBox="0 0 100 100" preserveAspectRatio="none">' + net + '</svg>' +
+        '<div class="sv-brand"><b>PRTS</b><em class="sy-en">SONAR TERMINAL</em><span>TERMINAL SONAR · TAUTAN AKTIF</span></div>' +
+        '<div class="sv-dial"><svg viewBox="-230 -230 460 460"><defs><linearGradient id="sv-sw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5ee6e6" stop-opacity="0"/><stop offset="1" stop-color="#5ee6e6" stop-opacity=".2"/></linearGradient></defs>' +
+        '<circle r="180" fill="rgba(6,11,16,.82)" stroke="#dfe9ee" stroke-width="1.5"/><circle r="119" fill="none" stroke="rgba(112,135,148,.5)"/><circle r="60" fill="none" stroke="rgba(112,135,148,.4)"/>' +
+        '<line x1="-180" y1="0" x2="180" y2="0" stroke="rgba(112,135,148,.3)"/><line x1="0" y1="-180" x2="0" y2="180" stroke="rgba(112,135,148,.3)"/>' +
+        '<g class="sy-sweep"><path d="M0 0 L180 0 A180 180 0 0 0 127 -127 Z" fill="url(#sv-sw)"/><line x1="0" y1="0" x2="180" y2="0" stroke="rgba(223,233,238,.55)"/></g>' +
+        '<g class="sv-contacts"></g><g class="sv-ticks">' + tk + '</g><g class="sv-az">' + lab + '</g>' +
+        '<g class="sv-geo1"><path d="M0 -78 L78 0 L0 78 L-78 0 Z" fill="none" stroke="rgba(223,233,238,.55)"/></g><g class="sv-geo2"><path d="M0 -100 L100 0 L0 100 L-100 0 Z" fill="none" stroke="rgba(223,233,238,.3)"/></g>' +
+        '<g class="sv-orbit"><path d="M206 0 l8 5 l0 -10 Z" transform="rotate(0)"/><path d="M206 0 l8 5 l0 -10 Z" transform="rotate(120)"/><path d="M206 0 l8 5 l0 -10 Z" transform="rotate(240)"/></g>' +
+        '<path d="M0 -54 L54 0 L0 54 L-54 0 Z" fill="#060b10" stroke="#dfe9ee" stroke-width="3"/><path d="' + wave + '" fill="none" stroke="#dfe9ee" stroke-width="1.5"/>' +
+        '</svg><div class="sv-center"><div class="sv-num">0.0%</div></div><div class="sv-ri sy-en">RHODES ISLAND</div></div>' +
+        '<div class="sv-log sv-left"><div class="sv-cap sy-en">SYSTEM LOG</div><div class="sv-lines"></div></div>' +
+        '<div class="sv-tele"><div class="sv-cap sy-en">TELEMETRY</div><div class="sv-rows"></div>' + tipBox('sv-in') + '</div>' +
+        '<div class="sv-build"></div><div class="sv-dark"></div>';
+      var sweepT0 = performance.now();
+      d.__sweepT0 = sweepT0;
+    }
+    d.className = 'sv sv' + BV;
+    d.innerHTML = h + FOOT;
+    var q = function (s) { return d.querySelector(s); };
+    if (BV === 4) return p4Init(d);
+    return { root: d, lines: q('.sv-lines'), tip: q('.sv-tip .bd'), code: q('.sv-code'), segs: d.querySelectorAll('.sv-segs i'), pct: q('.sv-pct'),
+      what: q('.sv-what'), ruler: q('.sv-ruler'), depth: q('.sv-depth'), sync: q('.sv-sync'), deep: q('.sv-deep'), jelly: q('.sv-jwrap'),
+      ticks: d.querySelectorAll('.sv-ticks line'), num: q('.sv-num'), rows: q('.sv-rows'), contacts: q('.sv-contacts'), build: q('.sv-build'), dark: q('.sv-dark'), net: d.querySelectorAll('.sv-net line') };
+  }
+
+  // 每次 upd() 调：f = 进度 0–1，stage = {key, text, ok}，n / total = 编译到第几个（Godot 回传后才有）
+  function updV(v, f, stage) {
+    logStep(stage.key, stage.text, stage.ok);
+    if (BV === 4) { v.f = f; v.stage = stage; v.ind = done && bootProgress === null; return; }
+    var nmax = window.innerHeight < 520 ? 7 : (window.innerHeight > window.innerWidth ? 9 : 12);   // 矮屏（手机横屏）/ 竖屏少留几行，不压页脚和提示
+    var html = '', start = Math.max(0, logs.length - nmax);
+    for (var i = start; i < logs.length; i++) {
+      var ln = logs[i], cur = ln.key === logKey && !ln.ok;
+      html += '<div class="' + (ln.ok ? 'ok' : (cur ? 'now' : 'wait')) + (nowS() - ln.t < 0.35 ? ' nw' : '') + '"><b>[' + ('000' + ln.t.toFixed(2)).slice(-6) + ']</b><span>' + esc(ln.s) + '</span><u></u><em>' + (ln.ok ? 'OK' : (cur ? '<i class="sv-cur">_</i>' : '..')) + '</em></div>';
+    }
+    if (v.lines.innerHTML !== html) v.lines.innerHTML = html;
+    var pc = Math.floor(f * 100);
+    if (v.code) v.code.textContent = (BV === 3 ? 'RI-SONAR 07' : 'NODE AS-07') + ' · T+' + ('00' + nowS().toFixed(1)).slice(-5);
+    if (BV === 1) {
+      var lit = f * v.segs.length;
+      for (var s = 0; s < v.segs.length; s++) v.segs[s].className = lit >= s + 1 ? 'on' : (lit > s ? 'half' : '');
+      v.pct.textContent = ('00' + pc).slice(-3) + '%';
+      v.what.textContent = stage.text;
+    } else if (BV === 2) {
+      var dep = Math.floor(1200 * f);
+      v.ruler.style.transform = 'translateY(' + (-dep * 1.2) + 'px)';
+      v.depth.innerHTML = '-' + ('000' + dep).slice(-4) + '<small>m</small>';
+      v.sync.textContent = 'SINKRON ' + pc + '%';
+      v.deep.style.opacity = String(f);
+      v.jelly.style.opacity = String(Math.max(0, Math.min(1, (f - 0.82) / 0.18)));
+      v.jelly.style.transform = 'translateY(' + (12 * (1 - Math.max(0, (f - 0.82) / 0.18))) + 'vh)';
+    } else {
+      var lt = Math.floor(f * v.ticks.length);
+      for (var k = 0; k < v.ticks.length; k++) v.ticks[k].setAttribute('class', k < lt ? 'on' : (k === lt ? 'cur' : ''));
+      v.num.textContent = (Math.floor(f * 1000) / 10).toFixed(1) + '%';
+      // 接触点：日志每一项（第一行除外），按 key 定方位 / 距离；扫过时的闪亮与扫描扇面同相（CSS 动画延迟按扇面已转的时间算）
+      var ch = '', el3 = ((performance.now() - v.root.__sweepT0) / 1000) % 3.2;
+      for (var ci = 1; ci < logs.length; ci++) {
+        var key = logs[ci].key, hs = 0;
+        for (var q = 0; q < key.length; q++) hs = (hs * 31 + key.charCodeAt(q)) % 100003;
+        var ang = (Math.abs(Math.sin(hs * 0.731 + 12.9898)) * 43758.5453 % 1) * 2 * Math.PI;
+        var rad = 180 * (0.3 + 0.6 * (Math.abs(Math.sin(hs * 0.731 + 25.9796)) * 43758.5453 % 1));
+        if (key === 'bKoneksi Selesai · Menunggu Perintah') { ang = Math.PI / 2; rad = 144; }
+        var x = (Math.cos(ang) * rad).toFixed(1), y = (Math.sin(ang) * rad).toFixed(1);
+        var hit = (ang / (2 * Math.PI)) * 3.2, dl = (((hit - el3) % 3.2) + 3.2) % 3.2 - 3.2;
+        ch += '<g class="' + (logs[ci].ok ? 'dn' : 'go') + '" transform="translate(' + x + ' ' + y + ')"><g class="lt" style="animation-delay:' + dl.toFixed(2) + 's">' +
+          '<circle class="gl" r="10" style="animation-delay:' + dl.toFixed(2) + 's"/><circle class="pg" r="6" style="animation-delay:' + dl.toFixed(2) + 's"/>' +
+          (logs[ci].ok ? '<rect x="-3" y="-3" width="6" height="6"/>' : '<rect class="bx" x="-4" y="-4" width="8" height="8"/><rect x="-1.5" y="-1.5" width="3" height="3"/>') +
+          '<text x="8" y="-5">' + ('0' + ci).slice(-2) + '</text></g></g>';
+      }
+      if (v.contacts.__n !== logs.length + ':' + logs.filter(function (l) { return l.ok; }).length) {   // 只在接触点增减 / 读完时重建（闪亮相位按重建时刻算）
+        v.contacts.innerHTML = ch;
+        v.contacts.__n = logs.length + ':' + logs.filter(function (l) { return l.ok; }).length;
+      }
+      v.rows.innerHTML = '<div><b>SINKRON</b>' + (Math.floor(f * 1000) / 10).toFixed(1) + '%</div><div><b>KONTAK</b>' + (logs.length - 1) + '</div><div><b>TAHAP</b>' + esc(stage.text) + '</div>';
+      v.build.textContent = 'BUILD 1031 · T+' + ('00' + nowS().toFixed(1)).slice(-5);
+      v.dark.style.opacity = String(Math.max(0, Math.min(1, (f - 0.93) / 0.07)) * 0.6);
+      var ne = Math.floor(v.net.length * Math.min(1, f * 1.05));
+      if (v.net.__n !== ne) { for (var e = 0; e < v.net.length; e++) v.net[e].setAttribute('class', e < ne ? 'on' : ''); v.net.__n = ne; }
+    }
+  }
+
+  function build() {
+    var d = document.createElement('div');
+    d.id = 'sy-load';
+    if (BV > 0) {   // 新方向（ui/boot_v 1–3）：同一个 #sy-load，撤页 / 进度回传的生命周期不变
+      document.body.appendChild(d);
+      var v = buildV(d);
+      el = { root: d, v: v, tip: v.tip, ring: true };
+      return finish(d);
+    }
+    var blips = '';
+    [[70, -96, 0], [-110, 40, 1.1], [30, 130, 2.0], [-60, -120, 2.6]].forEach(function (b) {
+      blips += '<circle class="sy-blip" cx="' + b[0] + '" cy="' + b[1] + '" r="3" fill="#5ee6e6" style="animation-delay:' + b[2] + 's"/>';
+    });
+    d.innerHTML = '<div class="sy-grid"></div><img class="sy-logo" src="loader_logo.png" alt=""><div class="sy-fan">KARYA PENGGEMAR ARKNIGHTS · NON-KOMERSIAL</div>' +
+      '<div class="sy-sonar"><svg viewBox="-210 -210 420 420"><defs><linearGradient id="sy-sw" x1="0" y1="0" x2="1" y2="0">' +
+      '<stop offset="0" stop-color="#5ee6e6" stop-opacity="0"/><stop offset="1" stop-color="#5ee6e6" stop-opacity=".35"/></linearGradient></defs>' +
+      '<circle r="180" fill="none" stroke="#2a3c46"/><circle r="120" fill="none" stroke="#1f2e36"/><circle r="60" fill="none" stroke="#1f2e36"/>' +
+      '<line x1="-190" y1="0" x2="190" y2="0" stroke="#1a272e"/><line x1="0" y1="-190" x2="0" y2="190" stroke="#1a272e"/>' +
+      '<path class="sy-sweep" d="M0 0 L180 0 A180 180 0 0 0 127 -127 Z" fill="url(#sy-sw)"/>' + blips +
+      '<circle r="' + R + '" fill="none" stroke="#1d2a32" stroke-width="6"/>' +
+      '<circle class="sy-ring" r="' + R + '" fill="none" stroke="#5ee6e6" stroke-width="6" stroke-dasharray="' + C + '" stroke-dashoffset="' + C + '" transform="rotate(-90)"/>' +
+      '<g stroke="#3b4f5a" stroke-width="1.5"><line x1="0" y1="-200" x2="0" y2="-210"/><line x1="200" y1="0" x2="210" y2="0"/><line x1="0" y1="200" x2="0" y2="210"/><line x1="-200" y1="0" x2="-210" y2="0"/></g>' +
+      '</svg><div class="sy-center"><div class="sy-num">0<span>%</span></div><div class="sy-sub sy-en">SONAR · BOOT</div></div></div>' +
+      '<div class="sy-panel sy-log"><div class="hd sy-en">TERMINAL LOG</div><div class="bd"><div></div><div></div><div></div></div></div>' +
+      '<div class="sy-panel sy-tips"><div class="hd sy-en">TIPS</div><div class="bd"></div></div>' +
+      '<div class="sy-foot">Karya Penggemar Arknights · Non-Komersial · Tidak Berafiliasi dengan Hypergryph</div>';
+    document.body.appendChild(d);
+    var lines = d.querySelectorAll('.sy-log .bd div');
+    el = { root: d, ring: d.querySelector('.sy-ring'), num: d.querySelector('.sy-num'), l1: lines[0], l2: lines[1], l3: lines[2], tip: d.querySelector('.sy-tips .bd') };
+    finish(d);
+  }
+
+  function finish(d) {
+    var ti = Math.floor(Math.random() * TIPS.length);
+    el.tip.textContent = TIPS[ti];
+    upd();
+    var tick = 0, closing = false, tipTimer = 0;
+    var out = function () {
+      if (closing) return;
+      closing = true;
+      clearInterval(t);
+      clearTimeout(tipTimer);
+      d.classList.add('sy-out');
+      setTimeout(function () { d.remove(); }, 400);
+    };
+    // One visual owner: download, engine and Godot warm-up update this same page.
+    window.__syBootUp = function () {
+      bootProgress = Math.max(shownProgress, 0.6);
+      bootLabel = 'Menyiapkan Menu Utama';
+      upd();
+    };
+    // 11-01：读完不自动进标题页。Godot 稳帧后调 __syBootReady → 这里出「开始游戏」，玩家点任意处 / 按任意键置 window.__syStart，
+    // boot_screen.gd 每帧读到后揭开标题页并调 __syBootDone 撤页（同桌面 boot_views.draw_start）
+    var ready = false;
+    window.__syBootReady = function () {
+      if (ready || closing) return;
+      ready = true;
+      bootProgress = 1;
+      bootLabel = 'Koneksi Selesai · Menunggu Perintah';
+      upd();
+      // 按钮挂在页面根上（盘 / 声呐圈有 transform，挂进去会被同在根上的收尾压暗层 .sv-dark 盖住），位置按圈的实际外框算：圈下留一段，
+      // 不压页脚声明；方向 3 竖屏盘下是系统日志，放底部
+      var dial = d.querySelector('.sv-dial') || d.querySelector('.sy-sonar');
+      var touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+      var rm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var LAB = 'MULAI', SCR = '0123456789ABCDEF#/<>+=';
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'sy-go';
+      b.innerHTML = '<b class="gw"></b><b class="fl"></b><b class="sc"></b><svg class="fr"></svg><i class="c0"></i><i class="c1"></i><i class="c2"></i><i class="c3"></i>' +
+        '<b class="r0"></b><b class="r1"></b><span>' + LAB.split('').map(function (c) { return '<s>' + (rm ? c : '') + '</s>'; }).join('') + '</span>' +
+        '<em class="sy-en">' + (touch ? 'KETUK UNTUK MULAI' : 'TEKAN TOMBOL APA SAJA') + '</em>';
+      // 边框三条路径按按钮像素写（矮屏换尺寸时重写）：tr 两条从上沿正中分向两边描出，bd 整框（呼吸），fw 一段青光沿边慢转
+      var frame = function () {
+        var w = b.offsetWidth, hh = b.offsetHeight, fr = b.querySelector('.fr');
+        if (!w || fr.__w === w + 'x' + hh) return;
+        fr.__w = w + 'x' + hh;
+        fr.setAttribute('width', w); fr.setAttribute('height', hh); fr.setAttribute('viewBox', '0 0 ' + w + ' ' + hh);
+        var m = w / 2, bd = 'M' + m + ' 0H' + w + 'V' + hh + 'H0V0Z';
+        fr.innerHTML = '<path class="tr" pathLength="1" d="M' + m + ' 0H' + w + 'V' + hh + 'H' + m + '"/><path class="tr" pathLength="1" d="M' + m + ' 0H0V' + hh + 'H' + m + '"/>' +
+          '<path class="bd" d="' + bd + '"/><path class="fw" pathLength="100" d="' + bd + '"/>';
+        b.style.setProperty('--sx', ((w - 6) / w).toFixed(4));
+        b.style.setProperty('--sy', ((hh - 6) / hh).toFixed(4));
+      };
+      var place = function () {
+        var low = window.innerHeight < 520, bh = low ? 42 : 50;
+        var y = window.innerHeight - (low ? 64 : 96) - bh / 2;   // 缺省：底部
+        if (BV === 4) y = Math.min(window.innerHeight * 0.8, window.innerHeight - 60 - bh / 2);   // 方向 4：进度条的位置（同 boot_views.start_rect）
+        if (dial && !(BV === 3 && window.innerHeight > window.innerWidth)) {
+          y = dial.getBoundingClientRect().bottom + (BV === 3 ? 34 : 30) + bh / 2;
+          y = Math.min(y, window.innerHeight - 30 - bh / 2 - (low ? 0 : 22));   // 让出页脚声明（矮屏不写下面那行英文）
+        }
+        b.style.top = Math.round(y - bh / 2) + 'px';
+        frame();
+      };
+      d.appendChild(b);
+      place();
+      window.addEventListener('resize', place);
+      d.classList.add('sy-ready');
+      // 引线：从「接入完成」接触点（方向 3 钉在 180 方位）竖直落到按钮上沿，接触点上一个收拢的锁定框（横屏才拉，竖屏盘下是日志）
+      var ct = d.querySelector('.sv-contacts');
+      ct = ct && ct.lastElementChild;
+      if (ct && !rm && window.innerWidth >= window.innerHeight) {
+        var cr = ct.querySelector('rect').getBoundingClientRect(), br0 = b.getBoundingClientRect(), dr = d.getBoundingClientRect();
+        var cx = cr.left + cr.width / 2 - dr.left, cy = cr.top + cr.height / 2 - dr.top;
+        var ld = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        ld.setAttribute('class', 'sy-lead');
+        ld.innerHTML = '<line pathLength="1" x1="' + cx + '" y1="' + cy + '" x2="' + (br0.left + br0.width / 2 - dr.left) + '" y2="' + (br0.top - dr.top) + '"/>' +
+          '<rect x="' + (cx - 6) + '" y="' + (cy - 6) + '" width="12" height="12"/>';
+        d.appendChild(ld);
+        setTimeout(function () { ld.remove(); }, 1500);
+      }
+      // 字：先乱码、再从左到右逐个解出（0.45 秒起，每字隔 0.08 秒）
+      if (!rm) {
+        var ss = b.querySelectorAll('span s'), t0 = performance.now();
+        var dec = setInterval(function () {
+          var u = (performance.now() - t0) / 1000, all = true;
+          for (var k = 0; k < ss.length; k++) {
+            if (u >= 0.62 + 0.08 * k) { ss[k].textContent = LAB[k]; ss[k].className = ''; }
+            else { all = false; if (u >= 0.45) { ss[k].textContent = SCR[Math.floor(Math.random() * SCR.length)]; ss[k].className = 'x'; } }
+          }
+          if (all) clearInterval(dec);
+        }, 42);
+      }
+      var t1 = performance.now();
+      var go = function (e) {
+        if (performance.now() - t1 < 250) return;   // 读完那一刻正好按着键，不算
+        if (e.type === 'keydown' && (e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.key))) return;   // 刷新 / 开发者工具之类的组合键放行
+        e.preventDefault();
+        e.stopPropagation();
+        // 点按是用户手势：先把引擎的音频上下文唤醒（power.js 记下的实例），引擎读到 __syStart 时按下音效才放得出来
+        // 触屏的 pointerdown 不算激活手势，这里唤醒在手机上不生效；真正的解锁在 power.js 的 pointerup / touchend / click 监听里（同一次点按紧接着就到）
+        if (window.__syAudioKick) window.__syAudioKick(); else (window.__syAudioCtx || []).forEach(function (c) { try { c.resume(); } catch (err) {} });
+        window.__syStart = 1;
+        b.classList.add('on');
+        // 按下：整屏一下压暗 + 三圈声呐脉冲从按钮扩到整屏（引擎 0.28 秒后揭开标题页）
+        var r = b.getBoundingClientRect(), dr2 = d.getBoundingClientRect();
+        var px = r.left + r.width / 2 - dr2.left, py = r.top + r.height / 2 - dr2.top;
+        var dim = document.createElement('div');
+        dim.className = 'sy-dim';
+        d.insertBefore(dim, b);
+        if (!rm) {
+          var R = Math.hypot(Math.max(px, dr2.width - px), Math.max(py, dr2.height - py));
+          for (var j = 0; j < 3; j++) {
+            var pu = document.createElement('div');
+            pu.className = 'sy-pulse p' + j;
+            pu.style.cssText = 'left:' + (px - R) + 'px;top:' + (py - R) + 'px;width:' + 2 * R + 'px;height:' + 2 * R + 'px;--s0:' + (r.height / 2 / R).toFixed(4) + ';animation-delay:' + (j * 0.1) + 's';
+            d.insertBefore(pu, b);
+          }
+        }
+        d.removeEventListener('pointerdown', go, true);
+        window.removeEventListener('keydown', go, true);
+      };
+      d.addEventListener('pointerdown', go, true);
+      window.addEventListener('keydown', go, true);
+    };
+    window.__syBootProgress = function (value, label) {
+      if (closing || ready || !Number.isFinite(value)) return;
+      bootProgress = Math.max(shownProgress, Math.min(1, value));
+      bootLabel = String(label || 'Menyiapkan Menu Utama');
+      upd();
+    };
+    window.__syBootDone = function () {
+      if (closing) return;
+      bootProgress = 1;
+      bootLabel = 'Masuk Menu Utama';
+      upd();
+      out();
+    };
+    var t = setInterval(function () {
+      upd();   // 启动阶段没有字节进度：靠这里按时间推进
+      if (++tick % 27 === 0) {
+        ti = (ti + 1) % TIPS.length;
+        el.tip.style.opacity = '0';
+        tipTimer = setTimeout(function () { el.tip.textContent = TIPS[ti]; el.tip.style.opacity = '1'; }, 220);
+      }
+      var nt = document.getElementById('status-notice');
+      if (nt && nt.style.display === 'block') out();
+    }, 150);
+  }
+  if (document.body) build(); else document.addEventListener('DOMContentLoaded', build);
+
+  var hasDS = typeof DecompressionStream === 'function';
+
+  // 把一片写进 out 的 [off, off + raw) 区间。gz 片：第一块带 1f 8b 时经 DecompressionStream 解开；否则（服务器已解压）原样写入。
+  // 返回写入的字节数；写越界 / 不足都按出错处理（part 会重试）。
+  // enc === 'lzma'（index.wasm，docs/187 §5）：不是 gzip 头时收齐压缩字节，用 syLzmaDecode（lzma_dec.js）直接解进 out 的这一段。
+  async function once(url, bytes, out, off, raw, enc) {
+    var r = await of(url, { cache: 'no-cache' });
+    if (!r.ok) throw new Error(url + ' ' + r.status);
+    var rd = r.body.getReader(), counted = 0, wrote = 0, gz = null, chunks = null, ds = null, w = null, pump = null, pumpErr = null;
+    function sink(v) {   // 解开后的字节 → out
+      if (wrote + v.length > raw) throw new Error(url + ' hasil dekompresi melebihi ukuran asli');
+      out.set(v, off + wrote); wrote += v.length;
+    }
+    try {
+      for (;;) {
+        var x = await rd.read();
+        if (x.done) break;
+        var v = x.value;
+        var add = Math.min(v.length, bytes - counted);
+        if (add > 0) { counted += add; got += add; upd(); }
+        if (gz === null) gz = (v.length > 1 && v[0] === 0x1f && v[1] === 0x8b);
+        if (!gz && enc === 'lzma') { if (!chunks) chunks = []; chunks.push(v); continue; }
+        if (!gz) { sink(v); continue; }
+        if (hasDS) {
+          if (!ds) {
+            ds = new DecompressionStream('gzip'); w = ds.writable.getWriter();
+            pump = (async function () {   // 与下载并行：解开的块一出来就写进 out，不在内存里攒
+              var rr = ds.readable.getReader();
+              for (;;) { var y = await rr.read(); if (y.done) break; sink(y.value); }
+            })().catch(function (e2) { pumpErr = e2; });
+          }
+          await w.write(v);
+        } else {
+          if (!chunks) chunks = [];
+          chunks.push(v);
+        }
+      }
+      if (ds) { await w.close(); await pump; if (pumpErr) throw pumpErr; }
+      else if (chunks && !gz) { var lz = cat(chunks); chunks = null; wrote = syLzmaDecode(lz, out.subarray(off, off + raw)); }
+      else if (chunks) { sink(inflate(cat(chunks))); chunks = null; }
+    } catch (e) {
+      got -= counted; upd();
+      if (w) { try { w.abort(); } catch (e2) {} }
+      throw e;
+    }
+    got += bytes - counted; upd();
+    if (wrote !== raw) throw new Error(url + ' ukuran hasil dekompresi tidak cocok: ' + wrote + ' != ' + raw);
+    return wrote;
+  }
+
+  function cat(list) {
+    var n = 0; list.forEach(function (b) { n += b.length; });
+    var o = new Uint8Array(n), p = 0;
+    list.forEach(function (b) { o.set(b, p); p += b.length; });
+    return o;
+  }
+
+  async function part(url, bytes, out, off, raw, enc) {
+    for (var i = 0; ; i++) {
+      try { return await once(url, bytes, out, off, raw, enc); }
+      catch (e) { if (i >= 2) throw e; await new Promise(function (r) { setTimeout(r, 800 * (i + 1)); }); }
+    }
+  }
+
+  var pending = Object.keys(M).length;
+  var of = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    var url = (typeof input === 'string') ? input : ((input && input.url) || '');
+    var path = url.split('?')[0].split('#')[0];
+    var name = path.split('/').pop();
+    var e = M[name];
+    if (!e) return of(input, init);
+    var base = path.slice(0, path.length - name.length);
+    var out = new Uint8Array(e.size), off = 0, jobs = [];
+    e.parts.forEach(function (p) {
+      var raw = p.length > 2 ? p[2] : e.size - off;   // 旧清单没有原始长度：只可能是单片
+      jobs.push(part(base + p[0], p[1], out, off, raw, e.enc));
+      off += raw;
+    });
+    if (off !== e.size) return Promise.reject(new Error(name + ' total ukuran part manifes tidak cocok: ' + off + ' != ' + e.size));
+    return Promise.all(jobs).then(function () {
+      if (--pending === 0) { done = true; upd(); }
+      return new Response(out, { status: 200, headers: { 'Content-Type': e.type, 'Content-Length': String(e.size) } });
+    });
+  };
+
+  // ---------------------------------------------------------------- 后备：纯 JS gzip 解压（没有 DecompressionStream 的老浏览器）
+  // 标准 inflate（RFC 1951），只处理 gzip 单成员；输出按 4 MiB 增长。正常浏览器走不到这里。
+  function inflate(src) {
+    var pos = 0;
+    if (src[0] !== 0x1f || src[1] !== 0x8b || src[2] !== 8) throw new Error('bukan berkas gzip');
+    var flg = src[3]; pos = 10;
+    if (flg & 4) { var xl = src[pos] | (src[pos + 1] << 8); pos += 2 + xl; }
+    if (flg & 8) { while (src[pos++] !== 0); }
+    if (flg & 16) { while (src[pos++] !== 0); }
+    if (flg & 2) pos += 2;
+    var out = new Uint8Array(4 << 20), op = 0;
+    function grow(n) { if (op + n > out.length) { var o2 = new Uint8Array(Math.max(out.length * 2, op + n)); o2.set(out); out = o2; } }
+    var bitbuf = 0, bitcnt = 0;
+    function bits(n) {
+      while (bitcnt < n) { bitbuf |= src[pos++] << bitcnt; bitcnt += 8; }
+      var v = bitbuf & ((1 << n) - 1); bitbuf >>>= n; bitcnt -= n; return v;
+    }
+    function huff(lengths) {   // 码长表 → {count, symbol}（zlib puff 做法）
+      var n = lengths.length, count = new Uint16Array(16), symbol = new Uint16Array(n), offs = new Uint16Array(16), i;
+      for (i = 0; i < n; i++) count[lengths[i]]++;
+      count[0] = 0;
+      for (i = 1; i < 16; i++) offs[i] = offs[i - 1] + count[i - 1];
+      for (i = 0; i < n; i++) if (lengths[i]) symbol[offs[lengths[i]]++] = i;
+      return { count: count, symbol: symbol };
+    }
+    function decode(h) {
+      var code = 0, first = 0, index = 0;
+      for (var len = 1; len < 16; len++) {
+        code |= bits(1);
+        var c = h.count[len];
+        if (code - c < first) return h.symbol[index + (code - first)];
+        index += c; first += c; first <<= 1; code <<= 1;
+      }
+      throw new Error('inflate: kode rusak');
+    }
+    var LB = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
+    var LE = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
+    var DB = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
+    var DE = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+    function codes(lh, dh) {
+      for (;;) {
+        var sym = decode(lh);
+        if (sym < 256) { grow(1); out[op++] = sym; }
+        else if (sym === 256) return;
+        else {
+          sym -= 257;
+          var len = LB[sym] + bits(LE[sym]);
+          var ds = decode(dh);
+          var dist = DB[ds] + bits(DE[ds]);
+          grow(len);
+          for (var k = 0; k < len; k++) { out[op] = out[op - dist]; op++; }
+        }
+      }
+    }
+    var fixL = null, fixD = null;
+    for (var last = 0; !last;) {
+      last = bits(1);
+      var type = bits(2);
+      if (type === 0) {
+        bitbuf = 0; bitcnt = 0;
+        var len = src[pos] | (src[pos + 1] << 8); pos += 4;
+        grow(len); out.set(src.subarray(pos, pos + len), op); op += len; pos += len;
+      } else if (type === 1) {
+        if (!fixL) {
+          var l = new Uint8Array(288), i;
+          for (i = 0; i < 144; i++) l[i] = 8;
+          for (; i < 256; i++) l[i] = 9;
+          for (; i < 280; i++) l[i] = 7;
+          for (; i < 288; i++) l[i] = 8;
+          fixL = huff(l);
+          var d = new Uint8Array(30); for (i = 0; i < 30; i++) d[i] = 5;
+          fixD = huff(d);
+        }
+        codes(fixL, fixD);
+      } else if (type === 2) {
+        var nlen = bits(5) + 257, ndist = bits(5) + 1, ncode = bits(4) + 4;
+        var ORD = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+        var lens = new Uint8Array(19), j;
+        for (j = 0; j < ncode; j++) lens[ORD[j]] = bits(3);
+        var ch = huff(lens);
+        var all = new Uint8Array(nlen + ndist);
+        for (j = 0; j < nlen + ndist;) {
+          var s = decode(ch);
+          if (s < 16) all[j++] = s;
+          else {
+            var rep = 0, val = 0;
+            if (s === 16) { val = all[j - 1]; rep = 3 + bits(2); }
+            else if (s === 17) rep = 3 + bits(3);
+            else rep = 11 + bits(7);
+            while (rep--) all[j++] = val;
+          }
+        }
+        codes(huff(all.subarray(0, nlen)), huff(all.subarray(nlen)));
+      } else throw new Error('inflate: tipe blok rusak');
+    }
+    return out.subarray(0, op);
+  }
+})();
+
+/* 网页容器适配（tools/export_web.py 内联进 index.html 的 <head>，在 loader.js 之后；docs/22「B站 Toy 容器」「Toy 接入」）
+ *
+ * 何时加载 Toy JS SDK：
+ *   - Toy 包（export_web.py --toy 在本文件之前写 window.__SY_TOY = 1）：一律加载；
+ *   - 其他包（itch / 本地）：只在像是 B站环境（域名含 bilibili / hdslb，或 UA 含 Bili）时加载；
+ *   - 加载失败 / 8 秒超时 / 非 B站环境：一切照旧（浏览器自己的布局，云存档 probe 回 unsupported）。
+ * SDK 在、且 toy.isSupport('onContainerChange') 为真（只在 B站 App 内）时：
+ *   1. 先 toy.onContainerChange 监听，再 toy.setContainerMode({orientation:'landscape', immersive:true})（手机横屏必须同时沉浸）；
+ *      setContainerMode 的 Promise 不算成功，以回调里的状态为准。
+ *   2. 用回调的 state.viewport（CSS px）与 state.safeArea 定画布：画布 = viewport 去掉安全边距，贴在安全区左上角，
+ *      刘海 / 灵动岛 / 底部横条那几条留黑边（和 iOS Safari 不声明 viewport-fit=cover 时的效果一样），游戏里的界面因此全在安全区内。
+ *      做法：改写 window.innerWidth / innerHeight（Godot 的 canvas_resize_policy=2 按它们定画布尺寸），画布用 !important 样式规则定位到安全区（引擎每次 resize 会重写行内样式），
+ *      再派一次 resize 让引擎重排；触点坐标 Godot 按画布 getBoundingClientRect 换算，不受影响。
+ *   3. 回调 changedFields 含 viewport / safeArea / orientation / immersive 时重新布局。
+ *   4. 1.5 秒内收不到回调（旧客户端不通知）：回退 CSS env(safe-area-inset-*)，同样按安全区留边；横竖屏交给导出模板
+ *      head_include 里的「请横屏」提示 + 首次触摸尝试全屏 / 锁横屏（export_presets.cfg，旧客户端的旋转自适应）。
+ *   5. 沉浸模式下的顶栏胶囊：SDK 文档没有单独接口，这里兼容性地从容器状态里找 capsule / menuButton / menuButtonRect /
+ *      topBar / navBar 之类的矩形字段（{x|left, y|top, width, height}，CSS px，相对 viewport）；找到且压在画布上就写进
+ *      window.__sySafe.capsule（画布坐标系），Godot 侧 Cfg.safe_insets 把它的下沿当成额外的顶部安全边距（触屏按键避开它）。
+ * window.__syToyBoot()：已有 window.toy 时手动启动（本地 mock 测试用：先在页面里装假 window.toy，再调它）。
+ * window.__sySafe：当前生效的安全边距 {left, top, right, bottom, source, capsule}，给测试与 Godot 侧查看。
+ * window.__syToyEnv：{rev, sdk, container, deviceType, orientation, immersive, viewport{w,h}, safeArea{l,t,r,b}, capsule, source}
+ *   rev 每次变化 +1；sdk = window.toy 是否存在；container = 是否拿到过容器状态（只在 B站 App 内）。
+ * window.__syToy：给 Godot 的桥（JavaScriptBridge.get_interface("__syToy")，参数 / 返回都是字符串）：
+ *   env()        → JSON.stringify(__syToyEnv)
+ *   onchange(cb) 注册回调；环境每次变化 cb(JSON)，注册时若已有状态立刻回一次
+ * window.__syToyWait()：Promise，SDK 加载结束（成功 / 失败 / 8 秒超时 / 非 B站环境）后给出 window.toy 或 null；
+ *   页面里已有 window.toy（本地 mock）时立刻给出。云存档（cloud.js）用它判断要不要启用。
+ */
+(function () {
+  var SDK = "//s1.hdslb.com/bfs/seed/toy/app/sdk/toy-sdk.js";
+  var started = false;
+  var frame = null;          // {vw, vh, l, t, r, b}：当前画布框（CSS px）
+  var innerW = null, innerH = null;
+  var toySettled = false, toyWaiters = [];
+  var env = { rev: 0, sdk: false, container: false, deviceType: "unknown", orientation: "", immersive: false,
+    viewport: null, safeArea: null, capsule: null, source: "none" };
+  var listeners = [];
+  window.__syToyEnv = env;
+
+  function emit() {
+    env.rev++;
+    env.sdk = !!window.toy;
+    var s;
+    try { s = JSON.stringify(env); } catch (e) { return; }
+    for (var i = 0; i < listeners.length; i++) { try { listeners[i](s); } catch (e2) {} }
+  }
+  window.__syToy = {
+    env: function () { try { env.sdk = !!window.toy; return JSON.stringify(env); } catch (e) { return "null"; } },
+    onchange: function (cb) {
+      if (typeof cb !== "function") return;
+      listeners.push(cb);
+      if (env.rev > 0) { try { cb(JSON.stringify(env)); } catch (e) {} }
+    }
+  };
+
+  function settleToy() {
+    if (toySettled) return;
+    toySettled = true;
+    env.sdk = !!window.toy;
+    emit();
+    var w = toyWaiters.splice(0);
+    for (var i = 0; i < w.length; i++) w[i](window.toy || null);
+  }
+  window.__syToyWait = function () {
+    return new Promise(function (res) {
+      if (window.toy || toySettled) res(window.toy || null);
+      else toyWaiters.push(res);
+    });
+  };
+
+  function realW() { return innerW ? innerW.call(window) : document.documentElement.clientWidth; }
+  function realH() { return innerH ? innerH.call(window) : document.documentElement.clientHeight; }
+
+  function n(v) { v = Number(v); return isFinite(v) && v > 0 ? v : 0; }
+
+  // 从容器状态里找胶囊矩形（兼容几种可能的字段名 / 形状），返回 {x, y, w, h}（CSS px，相对 viewport）或 null
+  function findCapsule(st) {
+    var names = ["capsule", "capsuleRect", "menuButton", "menuButtonRect", "menuButtonBoundingClientRect", "topBar", "navBar", "navigationBar"];
+    for (var i = 0; i < names.length; i++) {
+      var r = st[names[i]];
+      if (!r || typeof r !== "object") continue;
+      var x = Number(r.x != null ? r.x : r.left), y = Number(r.y != null ? r.y : r.top);
+      var w = Number(r.width != null ? r.width : (r.right != null ? r.right - x : NaN));
+      var h = Number(r.height != null ? r.height : (r.bottom != null ? r.bottom - y : NaN));
+      if (isFinite(x) && isFinite(y) && isFinite(w) && isFinite(h) && w > 0 && h > 0) return { x: x, y: y, w: w, h: h };
+    }
+    return null;
+  }
+
+  // 画布框：vw / vh 为容器可用尺寸（缺省按浏览器真实尺寸），l t r b 为安全边距；cap 为胶囊矩形（viewport 坐标）
+  function applyFrame(vw, vh, ins, source, cap) {
+    var l = n(ins.left), t = n(ins.top), r = n(ins.right), b = n(ins.bottom);
+    frame = { vw: n(vw), vh: n(vh), l: l, t: t, r: r, b: b };
+    var capsule = null;
+    if (cap) {
+      // 换到画布坐标系；完全在画布外（比如整个落在顶部安全边距里）就不用管
+      var cx = cap.x - l, cy = cap.y - t;
+      var cw = Math.max(1, (frame.vw || realW()) - l - r), chh = Math.max(1, (frame.vh || realH()) - t - b);
+      if (cx < cw && cy < chh && cx + cap.w > 0 && cy + cap.h > 0) capsule = { x: cx, y: cy, w: cap.w, h: cap.h };
+    }
+    window.__sySafe = { left: l, top: t, right: r, bottom: b, source: source, capsule: capsule };
+    env.safeArea = { l: l, t: t, r: r, b: b };
+    env.viewport = { w: frame.vw || realW(), h: frame.vh || realH() };
+    env.capsule = capsule;
+    env.source = source;
+    if (!innerW) {
+      try {
+        var dw = Object.getOwnPropertyDescriptor(window, "innerWidth") || Object.getOwnPropertyDescriptor(Window.prototype, "innerWidth");
+        var dh = Object.getOwnPropertyDescriptor(window, "innerHeight") || Object.getOwnPropertyDescriptor(Window.prototype, "innerHeight");
+        innerW = dw && dw.get; innerH = dh && dh.get;
+        Object.defineProperty(window, "innerWidth", { configurable: true, get: function () {
+          return frame ? Math.max(1, Math.floor((frame.vw || realW()) - frame.l - frame.r)) : realW(); } });
+        Object.defineProperty(window, "innerHeight", { configurable: true, get: function () {
+          return frame ? Math.max(1, Math.floor((frame.vh || realH()) - frame.t - frame.b)) : realH(); } });
+      } catch (e) { emit(); return; }
+    }
+    // 画布定位用带 !important 的样式表规则：引擎每次 resize 都会把 canvas 的行内样式重写成 position:absolute; left:0; top:0（行内不带 !important），
+    // 样式表里的 !important 压得过它；触点坐标 Godot 按 getBoundingClientRect 算，和定位一致
+    var st = document.getElementById("sy-frame");
+    if (!st) { st = document.createElement("style"); st.id = "sy-frame"; document.head.appendChild(st); }
+    st.textContent = "#canvas{position:fixed!important;left:" + l + "px!important;top:" + t + "px!important}";
+    document.body.style.background = "#000";
+    emit();
+    window.dispatchEvent(new Event("resize"));
+  }
+
+  function envInsets() {
+    var d = document.createElement("div");
+    d.style.cssText = "position:fixed;visibility:hidden;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)";
+    document.body.appendChild(d);
+    var s = getComputedStyle(d);
+    var r = { top: parseFloat(s.paddingTop), right: parseFloat(s.paddingRight), bottom: parseFloat(s.paddingBottom), left: parseFloat(s.paddingLeft) };
+    d.remove();
+    return r;
+  }
+
+  function takeState(st) {
+    env.container = true;
+    if (st.deviceType) env.deviceType = String(st.deviceType);
+    if (st.orientation) env.orientation = String(st.orientation);
+    if (typeof st.immersive === "boolean") env.immersive = st.immersive;
+    var vp = st.viewport || {};
+    applyFrame(vp.width, vp.height, st.safeArea || {}, "toy", findCapsule(st));
+  }
+
+  function boot() {
+    var toy = window.toy;
+    if (started || !toy || typeof toy.isSupport !== "function") return;
+    if (!document.body) { document.addEventListener("DOMContentLoaded", boot); return; }
+    started = true;
+    var got = false;
+    Promise.resolve(toy.isSupport("onContainerChange")).then(function (ok) {
+      if (!ok) return;   // Web 端：容器接口不可用，保持浏览器自己的布局
+      // 沉浸后让 env() 能读到刘海边距（回退路径用）
+      var m = document.querySelector('meta[name="viewport"]');
+      if (m && m.content.indexOf("viewport-fit") < 0) m.content += ", viewport-fit=cover";
+      try {
+        toy.onContainerChange(function (st) {
+          if (!st) return;
+          var first = !got;
+          got = true;
+          var ch = st.changedFields || [];
+          if (first || ch.indexOf("viewport") >= 0 || ch.indexOf("safeArea") >= 0 || ch.indexOf("orientation") >= 0 || ch.indexOf("immersive") >= 0 || ch.indexOf("deviceType") >= 0) {
+            takeState(st);
+          }
+        });
+      } catch (e) { started = false; return; }
+      Promise.resolve().then(function () {
+        return toy.setContainerMode({ orientation: "landscape", immersive: true });   // 手机：横屏必须同时沉浸
+      }).catch(function () {});
+      setTimeout(function () {
+        if (got) return;
+        // 旧客户端不通知容器状态：先试读一次，再不行按 CSS 安全边距留边
+        Promise.resolve(typeof toy.getContainerState === "function" ? toy.getContainerState() : null).then(function (st) {
+          if (got) return;
+          if (st && st.viewport) { got = true; takeState(st); }
+          else applyFrame(0, 0, envInsets(), "env", null);
+        }).catch(function () { if (!got) applyFrame(0, 0, envInsets(), "env", null); });
+      }, 1500);
+    }).catch(function () { started = false; });
+  }
+  window.__syToyBoot = boot;
+
+  if (window.toy) { settleToy(); boot(); return; }   // 页面里已有 window.toy（本地 mock，web_cloud_mock.py 注入）：不再加载 SDK（否则会被真 SDK 覆盖），直接启动
+  var likely = !!window.__SY_TOY || /bilibili|hdslb/i.test(location.hostname) || /bili/i.test(navigator.userAgent);
+  if (!likely) { settleToy(); return; }
+  var s = document.createElement("script");
+  s.src = SDK;
+  s.async = true;
+  s.onload = function () { settleToy(); boot(); };
+  s.onerror = settleToy;
+  setTimeout(settleToy, 8000);
+  document.head.appendChild(s);
+})();
+
+/* B站 Toy 云存档的网页端薄封装（tools/export_web.py 接在 container.js 之后内联进 index.html；docs/89）
+ *
+ * Godot 侧 game/scripts/cloud_save.gd 经 JavaScriptBridge.get_interface("__syCloud") 调用，Promise → 回调（参数都是字符串）：
+ *   probe(cb)          等 Toy SDK 加载结束（container.js 的 window.__syToyWait），cb("supported" | "unsupported")：
+ *                      只看 toy.isSupport('getCloudStorage' / 'setCloudStorage')，不调 getUserProfile、不读 toyOpenId
+ *   read(cb)           toy.getCloudStorage()（不带 key = 读全部，一次请求）→ cb("ok", JSON 串) / cb("err", 错误 JSON)
+ *   write(json, cb)    toy.setCloudStorage(items)（一次请求带全部分片）→ cb("ok", "") / cb("err", 错误 JSON)
+ *   stage(json)        存下最新打包好的内容（空串 = 清掉）；页面隐藏（visibilitychange hidden / pagehide）时这里自己上传一次，
+ *                      不经过 Godot（那时引擎可能已经停帧）。成功后清掉，Godot 下次同步时读云端比对即可。
+ * 错误 JSON：{code, type, msg}（SDK 的 error.code / error.type / message；307044 = 限流）。
+ * 非 B站环境（itch、普通浏览器）：window.toy 不存在，probe 回 "unsupported"，Godot 侧什么都不做。
+ */
+(function () {
+  var staged = "";
+  var busy = 0;
+
+  function waitToy() {
+    if (typeof window.__syToyWait === "function") return window.__syToyWait();
+    return Promise.resolve(window.toy || null);
+  }
+  function errJson(e) {
+    var o = { code: 0, type: "", msg: "" };
+    try {
+      if (e && typeof e === "object") {
+        o.code = Number(e.code) || 0;
+        o.type = String(e.type || "");
+        o.msg = String(e.message || e.msg || "");
+      } else {
+        o.msg = String(e);
+      }
+    } catch (x) {}
+    return JSON.stringify(o);
+  }
+  function call(cb, a, b) {
+    try { cb(a, b); } catch (x) {}
+  }
+
+  function flushHidden() {
+    var toy = window.toy;
+    if (!staged || busy || !toy || typeof toy.setCloudStorage !== "function") return;
+    var json = staged;
+    var items;
+    try { items = JSON.parse(json); } catch (x) { staged = ""; return; }
+    busy++;
+    Promise.resolve().then(function () { return toy.setCloudStorage(items); }).then(function () {
+      if (staged === json) staged = "";
+    }).catch(function () {}).then(function () { busy--; });
+  }
+
+  window.__syCloud = {
+    probe: function (cb) {
+      waitToy().then(function (toy) {
+        if (!toy || typeof toy.isSupport !== "function") return "unsupported";
+        return Promise.all([toy.isSupport("getCloudStorage"), toy.isSupport("setCloudStorage")]).then(function (r) {
+          return r[0] && r[1] ? "supported" : "unsupported";
+        });
+      }).catch(function () { return "unsupported"; }).then(function (r) { call(cb, r, ""); });
+    },
+    read: function (cb) {
+      busy++;
+      Promise.resolve().then(function () { return window.toy.getCloudStorage(); }).then(function (r) {
+        busy--;
+        call(cb, "ok", JSON.stringify(r || {}));
+      }, function (e) {
+        busy--;
+        call(cb, "err", errJson(e));
+      });
+    },
+    write: function (json, cb) {
+      busy++;
+      Promise.resolve().then(function () { return window.toy.setCloudStorage(JSON.parse(json)); }).then(function () {
+        busy--;
+        if (staged === json) staged = "";
+        call(cb, "ok", "");
+      }, function (e) {
+        busy--;
+        call(cb, "err", errJson(e));
+      });
+    },
+    stage: function (json) { staged = json ? String(json) : ""; },
+    staged: function () { return staged; }
+  };
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") flushHidden();
+  });
+  window.addEventListener("pagehide", flushHidden);
+})();
+
+/* 战绩分享卡的网页端薄封装（tools/export_web.py 接在 cloud.js 之后内联进 index.html；10-28 用户定样式 B）
+ *
+ * Godot 侧 game/scripts/screens/share_toy.gd 经 JavaScriptBridge.get_interface("__syShare") 调用，Promise → 回调（参数都是字符串）：
+ *   probe(cb)        等 Toy SDK 加载结束，cb(JSON {profile, qr, album})：只看 toy.isSupport，不调别的
+ *   profile(cb)      toy.getUserProfile() → 头像图片在页面内转成 PNG base64 → cb("ok", JSON {nickname, avatar})；
+ *                    toyOpenId 不读、不回传；头像昵称只给 Godot 在本地画卡，这里不上传、不打日志。失败 cb("err", "")
+ *   qr(size, cb)     toy.getQrCode({ size }) → cb("ok", 纯 base64 PNG) / cb("err", "")
+ *   save(b64, cb)    App 内 toy.saveImageToAlbum({ base64Data })；不支持时退回 <a download>（blob URL）。cb("album" | "download" | "err", "")
+ * 非 B站环境（itch、普通浏览器）：window.toy 不存在，probe 全回 false；save 仍可走 <a download>。
+ */
+(function () {
+  function waitToy() {
+    if (typeof window.__syToyWait === "function") return window.__syToyWait();
+    return Promise.resolve(window.toy || null);
+  }
+  function call(cb, a, b) {
+    try { cb(a, b); } catch (x) {}
+  }
+  function sup(toy, name) {
+    if (!toy || typeof toy.isSupport !== "function") return Promise.resolve(false);
+    return Promise.resolve().then(function () { return toy.isSupport(name); }).then(function (r) { return !!r; }, function () { return false; });
+  }
+  function stripB64(s) {
+    s = String(s || "");
+    var i = s.indexOf("base64,");
+    return i >= 0 ? s.substr(i + 7) : s;
+  }
+  // 头像 URL → PNG base64（跨域图要 crossOrigin；画不进画布就当没有头像）
+  function avatarB64(url) {
+    return new Promise(function (ok) {
+      if (!url) return ok("");
+      var img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = function () {
+        try {
+          var c = document.createElement("canvas");
+          c.width = 128; c.height = 128;
+          c.getContext("2d").drawImage(img, 0, 0, 128, 128);
+          ok(stripB64(c.toDataURL("image/png")));
+        } catch (x) { ok(""); }
+      };
+      img.onerror = function () { ok(""); };
+      img.src = url;
+      setTimeout(function () { ok(""); }, 6000);
+    });
+  }
+  function download(b64) {
+    var bin = atob(b64), n = bin.length, u8 = new Uint8Array(n);
+    for (var i = 0; i < n; i++) u8[i] = bin.charCodeAt(i);
+    var url = URL.createObjectURL(new Blob([u8], { type: "image/png" }));
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "Arknights_Survivors_Hasil.png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+  }
+
+  window.__syShare = {
+    probe: function (cb) {
+      waitToy().then(function (toy) {
+        return Promise.all([sup(toy, "getUserProfile"), sup(toy, "getQrCode"), sup(toy, "saveImageToAlbum")]);
+      }).catch(function () { return [false, false, false]; }).then(function (r) {
+        call(cb, JSON.stringify({ profile: r[0], qr: r[1], album: r[2] }), "");
+      });
+    },
+    profile: function (cb) {
+      Promise.resolve().then(function () { return window.toy.getUserProfile(); }).then(function (p) {
+        var nick = String((p && p.nickname) || "");
+        return avatarB64(p && p.avatar).then(function (b64) {
+          call(cb, "ok", JSON.stringify({ nickname: nick, avatar: b64 }));
+        });
+      }, function () { call(cb, "err", ""); });
+    },
+    qr: function (size, cb) {
+      Promise.resolve().then(function () { return window.toy.getQrCode({ size: Math.max(80, Math.min(1024, Number(size) | 0)) }); }).then(function (r) {
+        call(cb, "ok", stripB64(r && r.base64));
+      }, function () { call(cb, "err", ""); });
+    },
+    save: function (b64, cb) {
+      var toy = window.toy;
+      sup(toy, "saveImageToAlbum").then(function (ok) {
+        if (ok) {
+          return toy.saveImageToAlbum({ base64Data: "data:image/png;base64," + b64, hintMsg: "Simpan kartu hasil ke album" }).then(function () { call(cb, "album", ""); });
+        }
+        download(b64);
+        call(cb, "download", "");
+      }).catch(function () {
+        try { download(b64); call(cb, "download", ""); } catch (x) { call(cb, "err", ""); }
+      });
+    },
+  };
+})();
+</script>
+<script>
+(function(){
+  // 手机：竖屏时盖一层"请横屏"提示；首次触摸时尝试全屏 + 锁定横屏（Android Chrome 支持，iOS 只能靠提示）
+  var mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && Math.min(screen.width, screen.height) < 900);
+  if (!mobile) return;
+  function ov(){
+    var e = document.getElementById('rot');
+    if (!e) {
+      e = document.createElement('div'); e.id = 'rot';
+      e.style.cssText = 'position:fixed;inset:0;background:#02060a;color:#cfe;display:none;align-items:center;justify-content:center;z-index:9999;font:20px/1.6 sans-serif;text-align:center';
+      e.innerHTML = '<div><div style="font-size:48px">&#8635;</div>Putar ponsel ke mode lanskap<br><span style="font-size:13px;opacity:.7">ROTATE TO LANDSCAPE</span></div>';
+      document.body.appendChild(e);
+    }
+    return e;
+  }
+  function chk(){ var e = ov(); e.style.display = (innerHeight > innerWidth) ? 'flex' : 'none'; }
+  addEventListener('resize', chk); addEventListener('orientationchange', chk);
+  document.addEventListener('DOMContentLoaded', chk);
+  document.addEventListener('touchend', function(){
+    try {
+      var el = document.documentElement;
+      var f = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (f && !document.fullscreenElement) {
+        var p = f.call(el);
+        if (p && p.then) p.then(function(){ if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(function(){}); }).catch(function(){});
+      }
+    } catch (e) {}
+  }, {passive: true});
+})();
+</script>
+	</head>
+	<body>
+		<canvas id="canvas">
+			Your browser does not support the canvas tag.
+		</canvas>
+
+		<noscript>
+			Your browser does not support JavaScript.
+		</noscript>
+
+		<div id="status">
+			<img id="status-splash" class="show-image--false fullsize--true use-filter--true" src="index.png" alt="">
+			<progress id="status-progress"></progress>
+			<div id="status-notice"></div>
+		</div>
+
+		<script src="index.js"></script>
+		<script>
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":51283624,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_THREADS_ENABLED = false;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const statusOverlay = document.getElementById('status');
+	const statusProgress = document.getElementById('status-progress');
+	const statusNotice = document.getElementById('status-notice');
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		const lines = text.split('\n');
+		lines.forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		if (err instanceof Error) {
+			setStatusNotice(err.message);
+		} else if (typeof err === 'string') {
+			setStatusNotice(err);
+		} else {
+			setStatusNotice('An unknown error occurred.');
+		}
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	});
+
+	if (missing.length !== 0) {
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			let serviceWorkerRegistrationPromise;
+			try {
+				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
+			} catch (err) {
+				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
+			}
+			// There's a chance that installing the service worker would fix the issue
+			Promise.race([
+				serviceWorkerRegistrationPromise.then((registration) => {
+					if (registration != null) {
+						return Promise.reject(new Error('Service worker already exists.'));
+					}
+					return registration;
+				}).then(() => engine.installServiceWorker()),
+				// For some reason, `getRegistration()` can stall
+				new Promise((resolve) => {
+					setTimeout(() => resolve(), 2000);
+				}),
+			]).then(() => {
+				// Reload if there was no error.
+				window.location.reload();
+			}).catch((err) => {
+				console.error('Error while registering service worker:', err);
+			});
+		} else {
+			// Display the message as usual
+			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
+			displayFailureNotice(missingMsg + missing.join('\n'));
+		}
+	} else {
+		setStatusMode('progress');
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					statusProgress.value = current;
+					statusProgress.max = total;
+				} else {
+					statusProgress.removeAttribute('value');
+					statusProgress.removeAttribute('max');
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
+}());
+		</script>
+	</body>
+</html>
